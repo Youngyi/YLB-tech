@@ -12,9 +12,12 @@ def preprocess_df(df):
     df_part2 = df.drop(['ts', 'wtid'], axis=1)
     df_part2 = (df_part2 - df_part2.mean()) / (df_part2.max() - df_part2.min())
     df = pd.concat([df_part1, df_part2], sort=False, axis=1)
-    return df
-
+    return df_part2
+#
 # input_path = '/Users/yangyucheng/Desktop/SCADA/train'
 # df_test_1 = pd.read_csv(listdir(input_path)[0], index_col=0)
 # df1 = preprocess_df(df_test_1)
 # print(df1.head())
+#
+# labels = np.asarray(df1)
+# print(labels.shape)

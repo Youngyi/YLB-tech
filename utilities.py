@@ -11,36 +11,25 @@ class DataLoader:
 
     def __call__(self, train_data_path, machine_num):
         file_path = train_data_path +  '{0:03d}'.format(machine_num+1) + '/201807.csv'
-        full_data = []
-        p_miss_data = []
-        with open(file_path,'r') as file:
-            data = csv.reader(file)
-            data.__next__() #去除第一行
-            for record in data:
-                if any([r==''for r in record]):
-                    p_miss_data.append(record) #部分字段缺失条目
-                else:
-                    full_data.append(record)
+        data = np.loadtxt(file_path,dtype=np.str,delimiter=',',skiprows=1)
+        mask = (data!='').all(axis=1)
+        full_data = data[mask]
+        p_miss_data = data[np.logical_not(mask)]
             
         # record to be filled
         file_path = train_data_path+'template_submit_result.csv'
-        all_miss_data = []
-        with open(file_path,'r') as file:
-            data = csv.reader(file)
-            data.__next__()
-            for record in data:
-                if record[1] == str(machine_num):
-                    all_miss_data.append(record) #全部字段缺失条目
+        data = np.loadtxt(file_path,dtype=np.str,delimiter=',',skiprows=1)
+        mask = data[:,1]==str(machine_num)
+        all_miss_data = data[mask]
 
-        
-        raw_data_str = np.array(full_data)
-        raw_data = []
+#         raw_data_str = np.array(full_data)
+#         raw_data = full_data
 
-        for i in range(70):
-            s = raw_data_str[:,i].astype(self.t[i])
-            raw_data.append(s)
+#         for i in range(70):
+#             s = raw_data_str[:,i].astype(self.t[i])
+#             raw_data.append(s)
 
-        return np.array(raw_data).T,[p_miss_data,all_miss_data]
+        return full_data,[p_miss_data,all_miss_data]
 
 
 # class used for pre-process data 
@@ -61,4 +50,5 @@ class PreProc:
         
     def one_hot(self,data):
         self.enc = OneHotEncoder(categories='auto')
+        data = data.astype('i4')
         return self.enc.fit_transform(data).todense()

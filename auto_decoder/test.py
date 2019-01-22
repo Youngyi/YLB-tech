@@ -102,14 +102,20 @@ if __name__ == "__main__":
     net = Net(n_feature=84, n_hidden=100, n_output=84)
     optimizer = torch.optim.SGD(net2.parameters(), lr=LEARNING_RATE)
     loss_func = torch.nn.MSELoss()
-
+    plt.ion()
+    plt.show()
+    lst_loss = list
     for epoch in range(EPOCH):
         for step, (batch_x, batch_y) in enumerate(dataset_loader):
+            net2.zero_grad()
             prediction = net2(batch_x)
             loss = loss_func(prediction, batch_y)
             print('predicion ', prediction[0])
             # print('label ', batch_y)
-            optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            print('Epoch: ', epoch, '| Step: ', step, '| Loss ', loss)
+            lst_loss = lst_loss.append(loss.data.numpy())
+            if step>10000:
+                lst_iter = range(10000)
+                plt.plot(lst_iter, lst_loss, '-b', label='loss')
+

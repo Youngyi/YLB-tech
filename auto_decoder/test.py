@@ -11,10 +11,12 @@ from torchvision import transforms
 import numpy as np
 from utilities import DataLoader, PreProc
 import para
+from tensorboardX import SummaryWriter
 
-LEARNING_RATE = 0.01
+
+LEARNING_RATE = 0.0001
 BATCH_SIZE = 32
-EPOCH = 3
+EPOCH = 30
 
 
 class CustomDatasetFromCSV(Dataset):
@@ -82,6 +84,16 @@ net2 = torch.nn.Sequential(
     torch.nn.ReLU(),
     torch.nn.Linear(100, 84)
 )
+net3 = torch.nn.Sequential(
+    torch.nn.Dropout(0.1),
+    torch.nn.Linear(84, 200),
+    torch.nn.ReLU(),
+    torch.nn.Linear(200, 500),
+    torch.nn.ReLU(),
+    torch.nn.Linear(500, 200),
+    torch.nn.ReLU(),
+    torch.nn.Linear(200, 84)
+)
 
 
 if __name__ == "__main__":
@@ -100,22 +112,24 @@ if __name__ == "__main__":
                                                     shuffle=False)
 
     net = Net(n_feature=84, n_hidden=100, n_output=84)
-    optimizer = torch.optim.SGD(net2.parameters(), lr=LEARNING_RATE)
+    optimizer = torch.optim.Adam(net2.parameters(), lr=LEARNING_RATE)
     loss_func = torch.nn.MSELoss()
     plt.ion()
     plt.show()
-    lst_loss = list
+    writer = SummaryWriter()
+    iteration = 0
     for epoch in range(EPOCH):
         for step, (batch_x, batch_y) in enumerate(dataset_loader):
             net2.zero_grad()
             prediction = net2(batch_x)
             loss = loss_func(prediction, batch_y)
-            print('predicion ', prediction[0])
-            # print('label ', batch_y)
+            # print('predicion ', prediction[0])
+            # print('label ', batch_y[0])
             loss.backward()
             optimizer.step()
-            lst_loss = lst_loss.append(loss.data.numpy())
-            if step>10000:
-                lst_iter = range(10000)
-                plt.plot(lst_iter, lst_loss, '-b', label='loss')
-
+            iteration += 1
+            print('Epoch: ', epoch, '| Step: ', step, '| Loss', loss)
+            writer.add_scalar('data/loss', loss, iteration)
+    writer.export_scalars_to_json("./test.json")
+    writer.close()
+    torch.save(net2, 'net.pkl')

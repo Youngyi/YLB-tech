@@ -46,7 +46,8 @@ class PreProc:
     def standardization(self, data):
         self.stda = StandardScaler()
         data = data.astype('f4')
-        return self.stda.fit_transform(data)
+        data = (data - data.mean()) / (data.max() - data.min())
+        return data
         
     def one_hot(self,data):
         self.enc = OneHotEncoder(categories='auto')

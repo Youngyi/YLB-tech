@@ -1,4 +1,4 @@
-train_data = '/Users/yangyucheng/Desktop/SCADA/dataset/'
+train_data = '/Users/jiayuzhai/Downloads/dataset/'
 to_be_submit = train_data + 'template_submit_result.csv'
 machine_num = 33
 

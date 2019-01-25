@@ -96,4 +96,4 @@ if __name__ == '__main__':
 
     inputs = pp.transform(data) #预处理输出
     print(inputs.shape)
-    print(inputs[0])
+    print(inputs[1])

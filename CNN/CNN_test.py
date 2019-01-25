@@ -12,38 +12,18 @@ import numpy as np
 from utilities import DataLoader, PreProc
 import para
 from tensorboardX import SummaryWriter
+import torch.nn as nn
 
 
 LEARNING_RATE = 0.0001
 BATCH_SIZE = 32
 EPOCH = 30
 
-
-class CustomDatasetFromCSV(Dataset):
-    def __init__(self, csv_path,transforms=None):
-
-        self.data = preprocess_df(pd.read_csv(csv_path, index_col=0))
-        self.labels = np.asarray(self.data).astype(np.float32)
-        self.transforms = transforms
-        self.size = self.labels.shape[0] * self.labels.shape[1]
-        # self.zeros_num = int(self.size * percent)
-        # self.ones_num = self.size -  self.zeros_num
-        # self.matrix = np.hstack((np.zeros(self.zeros_num)))
-        self.train_data = self.labels
-
-    def __getitem__(self, index):
-        if self.transforms is not None:
-            data = self.transforms(self.data)
-        label = self.labels[index]
-        return (label, label)
-
-    def __len__(self):
-        return len(self.data.index)
 class CustomDatasetFromPre(Dataset):
     def __init__(self, data, transforms=None):
 
         self.data = data
-        self.labels = np.asarray(self.data).astype(np.float32)
+        self.data = np.asarray(self.data).astype(np.float32)
         self.transforms = transforms
         # self.size = self.data.shape[0] * self.data.shape[1]
         # self.zeros_num = int(self.size * percent)
@@ -54,18 +34,35 @@ class CustomDatasetFromPre(Dataset):
     def __getitem__(self, index):
         if self.transforms is not None:
             data = self.transforms(self.data)
-        label = self.labels[index]
-        return (label, label)
+        label_pos = index + self.data.shape[1]/2 + 1
+        label = self.data[label_pos]
+        high_pos = index
+        low_pos = index + self.data.shape[1] + 1
+        train_data = np.concatenate(self.data[high_pos:label_pos-1,:], self.data[label_pos+1:low_pos, :])
+        return (train_data, label)
 
     def __len__(self):
-        return len(self.data)
+        return len(self.data) - self.data.shape[1] - 1
 
-class Net(torch.nn.Module):
-    def __init__(self, n_feature, n_hidden, n_output):
-        super(Net, self).__init__()
-        torch.nn.Dropout(0.1)
-        self.hidden = torch.nn.Linear(n_feature, n_hidden)
-        self.predict = torch.nn.Linear(n_hidden, n_output)
+class CNN(torch.nn.Module):
+    def __init__(self):
+        super(CNN, self).__init__()
+        self.conv1 = nn.Sequential(  # input shape (1, 28, 28)
+            nn.Conv2d(
+                in_channels=1,  # input height
+                out_channels=16,  # n_filters
+                kernel_size=5,  # filter size
+                stride=1,  # filter movement/step
+                padding=2,  #  padding=(kernel_size-1)/2 当 stride=1
+            ),  # output shape (16, dimension, dimension)
+            nn.ReLU(),  # activation
+            nn.MaxPool2d(kernel_size=2),  # 在 2x2 空间里向下采样, output shape (16, 14, 14)
+        )
+        self.conv2 = nn.Sequential(  # input shape (16, dimension/2, dimension/2)
+            nn.Conv2d(16, 32, 5, 1, 2),  # output shape (32, dimension/2, dimension/2)
+            nn.ReLU(),  # activation
+            nn.MaxPool2d(2),  # output shape (32, 7, 7)
+        )
 
     def forward(self, x):
         x = F.dropout(x)

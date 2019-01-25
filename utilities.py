@@ -68,14 +68,14 @@ class PreProc:
         '''
         res = [] 
         for i in range(len(self.con_features)):
-            d = data.reshape([1,-1])[:,i]
+            d = data[:,i] 
             if self.con_features[i]: # con
-                d = d.astype('f4').reshape(-1, 1)
+                d = d.double().reshape(-1, 1)
                 stda = MinMaxScaler()
                 stda.fit([[self.pp_model[i]['min']], [self.pp_model[i]['max']]])
                 res.append(stda.transform(d))
             else: #dis
-                d = d.astype('i4').reshape(-1, 1)
+                d = d.int().reshape(-1, 1)
                 enc = OneHotEncoder(categories='auto')
                 enc.fit([[c] for c in self.pp_model[i]])
                 res.append(enc.transform(d).todense())

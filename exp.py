@@ -18,27 +18,38 @@ BATCH_SIZE = 64
 EPOCH = 3
 
 class MyDataset(Dataset):
-    def __init__(self, data, transforms=None):
-
-        self.data = data
-        # self.labels = np.asarray(self.data).astype(np.float32)
+    def __init__(self, file_path, transforms=None):
+        self.dl = DataLoader()
+        self.file_path = file_path
+        self.l = [346449, 344698, 347650, 344969, 342916, 346811, 346365, 346392, 344410, 344082, 345631, 345813, 350407, 347874, 351165, 340722, 339552, 341436, 345346, 347898, 344836, 345878, 345580, 347927, 346940, 350253, 347506, 346421, 348828, 346186, 347325, 339731, 346873]
+        self.current_mn = None
+        self.data = None
         self.transforms = transforms
-        # self.size = self.data.shape[0] * self.data.shape[1]
-        # self.zeros_num = int(self.size * percent)
-        # self.ones_num = self.size -  self.zeros_num
-        # self.matrix = np.hstack((np.zeros(self.zeros_num)))
 
 
     def __getitem__(self, index):
+        # 寻找index对应的machine_num和index
+        machine_num = 0
+        for i in range(len(self.l)):
+            if index>=self.l[i]:
+                index-=self.l[i]
+            else:
+                machine_num = i
+                break
+        # Load data
+        if self.current_mn != machine_num:
+            self.current_mn = machine_num
+            self.data = self.dl(para.train_data,machine_num)[:,1:]
+
         if self.transforms is not None:
             data = self.transforms.transform(self.data[index])
         else:
-            data = torch.tensor(self.data[index])
-        # print(data)
-        return (data, data)
+            data = self.data[index]
+
+        return torch.tensor(data.astype('f4'))
 
     def __len__(self):
-        return len(self.data)
+        return sum(self.l)
 
 
 def main():
@@ -51,27 +62,20 @@ def main():
             raw_data = dl(para.train_data,machine_num) #加载数据
             data = raw_data[:,1:] #移除时间列
             pp.fit(data)
-            print('机器 {0} 处理完毕。'.format(str(machine_num+1)))
+            print('机器 {0} 处理完毕。'.format(str(machine_num+1)),flush=True)
         #保存预处理meta
         output_hal = open("meta.pkl", 'wb')
         s = pickle.dumps(pp)
         output_hal.write(s)
         output_hal.close()
-        print('保存预处理meta完成。')
+        print('保存预处理meta完成。',flush=True)
     else: #加载预处理meta
         with open("meta.pkl",'rb') as file:
             pp = pickle.loads(file.read())
-        print('加载预处理meta完成。')
-    # #测试            
-    # raw_data = dl(para.train_data,0)
-    # data = raw_data[:,1:] #移除时间列
-    # inputs = pp.transform(data[0:10]) #预处理输出
-    # print(inputs.shape)
-    # print(inputs[0])
+        print('加载预处理meta完成。',flush=True)
 
     #2. 数据batch化
-    data = dl(para.train_data,0)[:,1:]
-    dataset = MyDataset(data,transforms=pp)
+    dataset = MyDataset(para.train_data)
     dataset_loader = torch.utils.data.DataLoader(dataset=dataset,
                                                     batch_size=BATCH_SIZE,
                                                     shuffle=False)
@@ -94,11 +98,12 @@ def main():
 
     #4. 训练相关
     for epoch in range(EPOCH):
-        print('epoch {0} start'.format(epoch))
-        for step, (batch_x, batch_y) in tqdm(enumerate(dataset_loader),total = len(dataset_loader)):
+        print('epoch {0} start'.format(epoch),flush=True)
+        for step, batch_x in tqdm(enumerate(dataset_loader),total = len(dataset_loader)):
             net2.zero_grad()
+            batch_x = pp.transform(batch_x)
             prediction = net2(batch_x)
-            loss = loss_func(prediction, batch_y)
+            loss = loss_func(prediction, batch_x)
             loss.backward()
 
             optimizer.step()

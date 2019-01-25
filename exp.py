@@ -33,9 +33,9 @@ class MyDataset(Dataset):
         if self.transforms is not None:
             data = self.transforms.transform(self.data[index])
         else:
-            data = torch.tensor(self.data[index])
+            data = self.data[index]
         # print(data)
-        return (data, data)
+        return torch.tensor(data.astype('f4'))
 
     def __len__(self):
         return len(self.data)
@@ -71,7 +71,7 @@ def main():
 
     #2. 数据batch化
     data = dl(para.train_data,0)[:,1:]
-    dataset = MyDataset(data,transforms=pp)
+    dataset = MyDataset(data)
     dataset_loader = torch.utils.data.DataLoader(dataset=dataset,
                                                     batch_size=BATCH_SIZE,
                                                     shuffle=False)
@@ -95,10 +95,11 @@ def main():
     #4. 训练相关
     for epoch in range(EPOCH):
         print('epoch {0} start'.format(epoch))
-        for step, (batch_x, batch_y) in tqdm(enumerate(dataset_loader),total = len(dataset_loader)):
+        for step, batch_x in tqdm(enumerate(dataset_loader),total = len(dataset_loader)):
             net2.zero_grad()
+            batch_x = pp.transform(batch_x)
             prediction = net2(batch_x)
-            loss = loss_func(prediction, batch_y)
+            loss = loss_func(prediction, batch_x)
             loss.backward()
 
             optimizer.step()

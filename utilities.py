@@ -64,22 +64,44 @@ class PreProc:
     def transform(self,data):
         '''
         data: (69,) -->单条数据，用于dataset transforms
-        data: (N,69) -->多条数据，未用到
+        data: (N,69) -->多条数据,N为batch_size
+        data: (N,timestep,69)-->多条时序数据
         '''
-        res = [] 
-        for i in range(len(self.con_features)):
-            d = data[:,i] 
-            if self.con_features[i]: # con
-                d = d.double().reshape(-1, 1)
-                stda = MinMaxScaler()
-                stda.fit([[self.pp_model[i]['min']], [self.pp_model[i]['max']]])
-                res.append(stda.transform(d))
-            else: #dis
-                d = d.int().reshape(-1, 1)
-                enc = OneHotEncoder(categories='auto')
-                enc.fit([[c] for c in self.pp_model[i]])
-                res.append(enc.transform(d).todense())
-        return torch.tensor(np.concatenate(res,axis=1))
+        if data.ndimension() <= 2:
+            res = []
+            for i in range(len(self.con_features)):
+                d = data[:,i]
+                if self.con_features[i]: # con
+                    d = d.double().reshape(-1, 1)
+                    stda = MinMaxScaler()
+                    stda.fit([[self.pp_model[i]['min']], [self.pp_model[i]['max']]])
+                    res.append(stda.transform(d))
+                else: #dis
+                    d = d.int().reshape(-1, 1)
+                    enc = OneHotEncoder(categories='auto')
+                    enc.fit([[c] for c in self.pp_model[i]])
+                    res.append(enc.transform(d).todense())
+            return torch.tensor(np.concatenate(res,axis=1))
+
+        elif data.ndimension() == 3:
+            res = []
+            for i in range(len(self.con_features)):
+                for time_step in range
+                d = data[:, time_step , i]
+                if self.con_features[i]:  # con
+                    d = d.double().reshape(-1, 1)
+                    stda = MinMaxScaler()
+                    stda.fit([[self.pp_model[i]['min']], [self.pp_model[i]['max']]])
+                    res.append(stda.transform(d))
+                else:  # dis
+                    d = d.int().reshape(-1, 1)
+                    enc = OneHotEncoder(categories='auto')
+                    enc.fit([[c] for c in self.pp_model[i]])
+                    res.append(enc.transform(d).todense())
+            return torch.tensor(np.concatenate(res, axis=1))
+        else :
+            raise NotImplementedError
+
 
 '''
 测试代码

@@ -86,8 +86,8 @@ class PreProc:
         elif data.ndimension() == 3:
             res = []
             for i in range(len(self.con_features)):
-                for time_step in range
-                d = data[:, time_step , i]
+                # for time_step in range(data.shape[1]):
+                d = data[:, :, i]
                 if self.con_features[i]:  # con
                     d = d.double().reshape(-1, 1)
                     stda = MinMaxScaler()
@@ -99,7 +99,7 @@ class PreProc:
                     enc.fit([[c] for c in self.pp_model[i]])
                     res.append(enc.transform(d).todense())
             return torch.tensor(np.concatenate(res, axis=1))
-        else :
+        else:
             raise NotImplementedError
 
 

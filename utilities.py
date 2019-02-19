@@ -40,6 +40,7 @@ class PreProc:
     def __init__(self,types):
         self.con_features = [True if t=='f4' else False for t in types] # 69个字段预处理分类操作
         self.dis_features = np.logical_not(self.con_features)
+        self.post_con_feature = []
         self.pp_model = []
         for f in self.con_features:
             if f:
@@ -59,7 +60,14 @@ class PreProc:
                 for key in Counter(d):
                     if key not in self.pp_model[i]:
                         self.pp_model[i].add(key)
-
+        self.post_con_features = []
+        for i in range(len(self.con_features)):
+            if self.con_features[i]:
+                self.post_con_features.append(True)
+            else:
+                for num in range(len(self.pp_model[i])):
+                    self.post_con_features.append(False)
+        print(len(self.post_con_features))
         
     def transform(self,data):
         '''
@@ -67,6 +75,7 @@ class PreProc:
         data: (N,69) -->多条数据,N为batch_size
         data: (N,timestep,69)-->多条时序数据
         '''
+        print(data.shape)
         if data.ndimension() <= 2:
             res = []
             for i in range(len(self.con_features)):
@@ -103,19 +112,55 @@ class PreProc:
             raise NotImplementedError
 
 
-'''
-测试代码
-'''
-if __name__ == '__main__':
-    dl = DataLoader()
-    machine_num = 0 # 0号为001，1号为002，以此类推
-    import para
-    raw_data = dl(para.train_data,machine_num) #加载数据
+    def recover(self,data):
+        #data: (N,141) -->(N,69)
+        self.post_con_features = []
+        for i in range(len(self.con_features)):
+            if self.con_features[i]:
+                self.post_con_features.append(True)
+            else:
+                for num in range(len(self.pp_model[i])):
+                    self.post_con_features.append(False)
+        print(len(self.post_con_features))
+        res = []
+        i = 0
+        j = 0
+        while i < len(self.post_con_features):
+            if self.post_con_features[i]:    # con
+                d = data[:, i]
+                d = d.double().reshape(-1, 1)
+                stda = MinMaxScaler()
+                stda.fit([[self.pp_model[j]['min']], [self.pp_model[j]['max']]])
+                res.append(stda.inverse_transform(d))
+                i = i + 1
+                j = j + 1
+            else:  # dis
+                k = i
+                while(k<141 and (not self.post_con_features[k])):
+                    k+=1
+                d = data[:,i:k]
+                d = d.int()
+                enc = OneHotEncoder(categories='auto')
+                print(j)
+                enc.fit([[c] for c in self.pp_model[j]])
+                res.append(enc.inverse_transform(d))
+                i = k
+                j = j + 1
+        return torch.tensor(np.concatenate(res, axis=1))
 
-    data = raw_data[:,1:] #移除时间列
-    pp = PreProc(dl.t[1:]) 
-    pp.fit(data)#预处理
-
-    inputs = pp.transform(data) #预处理输出
-    print(inputs.shape)
-    print(inputs[1])
+'''
+# 测试代码
+# '''
+# if __name__ == '__main__':
+#     dl = DataLoader()
+#     machine_num = 0 # 0号为001，1号为002，以此类推
+#     import para
+#     raw_data = dl(para.train_data,machine_num) #加载数据
+#
+#     data = raw_data[:,1:] #移除时间列
+#     pp = PreProc(dl.t[1:])
+#     pp.fit(data)#预处理
+#
+#     inputs = pp.transform(data) #预处理输出
+#     print(inputs.shape)
+#     print(inputs[1])

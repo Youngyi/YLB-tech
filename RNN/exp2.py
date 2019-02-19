@@ -180,8 +180,8 @@ def main():
     criterion = nn.MSELoss()
     dataset = MyDataset(para.train_data)
     dataset_loader = torch.utils.data.DataLoader(dataset=dataset,
-                                                    batch_size=para.batch_size,
-                                                    shuffle=False)
+                                                 batch_size=para.batch_size,
+                                                 shuffle=False)
     # 4.训练
     for epoch in range(3):
         print('epoch {0} start'.format(epoch), flush=True)
@@ -189,6 +189,7 @@ def main():
             encoder.zero_grad()
             decoder.zero_grad()
             batch_x = pp.transform(batch_x)
+            print(pp.recover(batch_x).shape)
             batch_x = batch_x.view(para.sequence_length, -1, 141).float()
             loss = train(batch_x, batch_x, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion)
     torch.save(encoder,'encoder0.pkl')

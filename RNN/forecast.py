@@ -44,7 +44,7 @@ class MyDataset(Dataset):
         self.dl = DataLoader()
         self.data = self.dl(data.values[:,1:])
         self.l = [3598, 3606, 3619, 3597, 3594, 3594, 3595, 3595, 3592, 3596, 3597, 3633, 3635, 3642, 3633, 3572, 3551, 3572, 3594, 3597, 3599, 3636, 3632, 3598, 3651, 3638, 3626, 3623, 3632, 3635, 3637, 3562, 3626]
-        #self.l = [359846, 360660, 361993, 359744, 359457, 359464, 359510, 359535, 359219, 359608, 359752, 363304, 363512, 364214, 363300, 357219, 355158, 357234, 359494, 359743, 359995, 363685, 363212, 359844, 365176, 363810, 362638, 362355, 363215, 363533, 363743, 356215, 362674]
+        self.l2 = [359846, 360660, 361993, 359744, 359457, 359464, 359510, 359535, 359219, 359608, 359752, 363304, 363512, 364214, 363300, 357219, 355158, 357234, 359494, 359743, 359995, 363685, 363212, 359844, 365176, 363810, 362638, 362355, 363215, 363533, 363743, 356215, 362674]
         self.current_mn = self.data[0][0]
         self.transforms = transforms
 
@@ -55,7 +55,8 @@ class MyDataset(Dataset):
         else:
             # data = self.data[index]
             data = self.data[index*100:index*100+100,:]
-
+        if index is self.l[self.current_mn-1]:
+            data = self.data[self.l2[self.current_mn-1]-100:self.l2[self.current_mn-1], :]
         data = pd.DataFrame(data=data,
           index=np.array(range(0, 100)),
           columns=np.array(range(0, 69)))
@@ -88,6 +89,7 @@ def forecast(input_tensor, encoder, decoder, use_teacher_forcing):
     encoder_output, encoder_hidden = encoder(input_tensor, encoder_hidden)
 
     decoder_input = torch.zeros_like(input_tensor[0])  # B x F
+    output = []
 
     decoder_hidden = encoder_hidden.view(para.batch_size, -1)  # B x H
     if use_teacher_forcing:
@@ -96,13 +98,15 @@ def forecast(input_tensor, encoder, decoder, use_teacher_forcing):
             decoder_output, decoder_hidden = decoder(
                 decoder_input, decoder_hidden)
             decoder_input = input_tensor[di]  # Teacher forcing
+        return input_tensor
     else:
         # Without teacher forcing: use its own predictions as the next input
         for di in range(100):
             decoder_output, decoder_hidden = decoder(
                 decoder_input, decoder_hidden)
             decoder_input = decoder_output.detach()  # detach from history as input
-    return decoder_output
+            output.append(decoder_output)
+        return torch.stack(output, dim=1)
 
 def get_data(i):
     """
@@ -142,7 +146,9 @@ for i in tqdm(range(1,34)):
         # print(pp.recover(batch_x).shape)
         batch_x = batch_x.view(para.sequence_length, -1, 141).float()
         data = forecast(batch_x, encoder, decoder,use_teacher_forcing=use_teacher_forcing)
+        batch_x = batch_x[:,0,:]
         data = pp.recover(batch_x)
+        print(data)
 
     df = pd.concat([df,data],axis = 0)
 

@@ -17,22 +17,23 @@ class DataLoader:
         data = np.loadtxt(file_path,dtype=np.str,delimiter=',',skiprows=1)
         mask = (data!='').all(axis=1)
         full_data = data[mask]
-#         p_miss_data = data[np.logical_not(mask)]
-            
-#         # record to be filled
-#         file_path = train_data_path+'template_submit_result.csv'
-#         data = np.loadtxt(file_path,dtype=np.str,delimiter=',',skiprows=1)
-#         mask = data[:,1]==str(machine_num)
-#         all_miss_data = data[mask]
+        print(full_data.shape)
+        # p_miss_data = data[np.logical_not(mask)]
+        #
+        # # record to be filled
+        # file_path = train_data_path+'template_submit_result.csv'
+        # data = np.loadtxt(file_path,dtype=np.str,delimiter=',',skiprows=1)
+        # mask = data[:,1]==str(machine_num)
+        # all_miss_data = data[mask]
+        #
+        # raw_data_str = np.array(full_data)
+        # raw_data = full_data
+        #
+        # for i in range(70):
+        #     s = raw_data_str[:,i].astype(self.t[i])
+        #     raw_data.append(s)
 
-#         raw_data_str = np.array(full_data)
-#         raw_data = full_data
-
-#         for i in range(70):
-#             s = raw_data_str[:,i].astype(self.t[i])
-#             raw_data.append(s)
-
-        return full_data#,[p_miss_data,all_miss_data]
+        return full_data #,p_miss_data,all_miss_data
 
 
 # class used for pre-process data 
@@ -75,7 +76,7 @@ class PreProc:
         data: (N,69) -->多条数据,N为batch_size
         data: (N,timestep,69)-->多条时序数据
         '''
-        print(data.shape)
+        # print(data.shape)
         if data.ndimension() <= 2:
             res = []
             for i in range(len(self.con_features)):
@@ -121,7 +122,6 @@ class PreProc:
             else:
                 for num in range(len(self.pp_model[i])):
                     self.post_con_features.append(False)
-        print(len(self.post_con_features))
         res = []
         i = 0
         j = 0

@@ -29,7 +29,6 @@ class MyDataset(Dataset):
         self.dl = DataLoader()
         self.file_path = file_path
         self.l = [3464, 3446, 3476, 3449, 3429, 3468, 3463, 3463, 3444, 3440, 3456, 3458, 3504, 3478, 3511, 3407, 3395, 3414, 3453, 3478, 3448, 3458, 3455, 3479, 3469, 3502, 3475, 3464, 3488, 3461, 3473, 3397, 3468]
-        # self.l = [346449, 344698, 347650, 344969, 342916, 346811, 346365, 346392, 344410, 344082, 345631, 345813, 350407, 347874, 351165, 340722, 339552, 341436, 345346, 347898, 344836, 345878, 345580, 347927, 346940, 350253, 347506, 346421, 348828, 346186, 347325, 339731, 346873]
         self.current_mn = None
         self.data = None
         self.transforms = transforms
@@ -101,6 +100,29 @@ class DecoderRNN(nn.Module):
         return torch.zeros(para.batch_size, self.hidden_size, device=device)
 
 
+def forecast(input_tensor, encoder, decoder):
+    encoder_outputs = torch.zeros(100, encoder.hidden_size, device=device)
+    encoder_hidden = encoder.initHidden()
+
+    encoder_output, encoder_hidden = encoder(input_tensor, encoder_hidden)
+
+    decoder_input = torch.zeros_like(input_tensor[0])  # B x F
+
+    decoder_hidden = encoder_hidden.view(para.batch_size, -1)  # B x H
+    if True:
+        # Teacher forcing: Feed the target as the next input
+        for di in range(100):
+            decoder_output, decoder_hidden = decoder(
+                decoder_input, decoder_hidden)
+            decoder_input = input_tensor[di]  # Teacher forcing
+
+    else:
+        # Without teacher forcing: use its own predictions as the next input
+        for di in range(100):
+            decoder_output, decoder_hidden = decoder(
+                decoder_input, decoder_hidden)
+            decoder_input = decoder_output.detach()  # detach from history as input
+    return decoder_output
 
 
 def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion):
@@ -111,7 +133,6 @@ def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, deco
 
     input_length = input_tensor.size(0)
     target_length = target_tensor.size(0)
-
     encoder_outputs = torch.zeros(100, encoder.hidden_size, device=device)
 
     loss = 0.
@@ -165,11 +186,11 @@ def main():
     with open("meta.pkl",'rb') as file:
         pp = pickle.loads(file.read())
     print('加载预处理meta完成。',flush=True)
-    inputs = pp.transform(data)
-    feature_num = inputs.shape[-1]
-    print(inputs.shape)
+    # inputs = pp.transform(data)
+    # feature_num = inputs.shape[-1]
+    # print(inputs.shape)
     # 2.1 batch化
-    inputs = inputs.view(para.sequence_length,-1,feature_num).float() # L x B x F
+    # inputs = inputs.view(para.sequence_length,-1,feature_num).float() # L x B x F
 
     # 3.模型
     encoder = EncoderRNN(141,para.hidden_size).to(device)
@@ -189,9 +210,10 @@ def main():
             encoder.zero_grad()
             decoder.zero_grad()
             batch_x = pp.transform(batch_x)
-            print(pp.recover(batch_x).shape)
+            # print(pp.recover(batch_x).shape)
             batch_x = batch_x.view(para.sequence_length, -1, 141).float()
             loss = train(batch_x, batch_x, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion)
+            print(forecast(batch_x,encoder,decoder))
     torch.save(encoder,'encoder0.pkl')
     torch.save(decoder,'decoder0.pkl')
     # loss = train(inputs,inputs,encoder,decoder,encoder_optimizer, decoder_optimizer, criterion)

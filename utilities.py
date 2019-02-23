@@ -141,12 +141,11 @@ class PreProc:
                 d = data[:,i:k]
                 d = d.int()
                 enc = OneHotEncoder(categories='auto')
-                print(j)
                 enc.fit([[c] for c in self.pp_model[j]])
                 res.append(enc.inverse_transform(d))
                 i = k
                 j = j + 1
-        return torch.tensor(np.concatenate(res, axis=1))
+        return np.concatenate(res, axis=1)
 
 '''
 # 测试代码

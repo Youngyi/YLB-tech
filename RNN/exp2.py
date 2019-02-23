@@ -204,7 +204,7 @@ def main():
                                                  batch_size=para.batch_size,
                                                  shuffle=False)
     # 4.训练
-    for epoch in range(3):
+    for epoch in range(10):
         print('epoch {0} start'.format(epoch), flush=True)
         for step, batch_x in tqdm(enumerate(dataset_loader), total=len(dataset_loader)):
             encoder.zero_grad()
@@ -213,7 +213,7 @@ def main():
             # print(pp.recover(batch_x).shape)
             batch_x = batch_x.view(para.sequence_length, -1, 141).float()
             loss = train(batch_x, batch_x, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion)
-            print(forecast(batch_x,encoder,decoder))
+            print(loss)
     torch.save(encoder,'encoder0.pkl')
     torch.save(decoder,'decoder0.pkl')
     # loss = train(inputs,inputs,encoder,decoder,encoder_optimizer, decoder_optimizer, criterion)

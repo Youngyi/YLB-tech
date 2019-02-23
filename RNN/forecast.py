@@ -47,7 +47,8 @@ class MyDataset(Dataset):
         self.l2 = [359846, 360660, 361993, 359744, 359457, 359464, 359510, 359535, 359219, 359608, 359752, 363304, 363512, 364214, 363300, 357219, 355158, 357234, 359494, 359743, 359995, 363685, 363212, 359844, 365176, 363810, 362638, 362355, 363215, 363533, 363743, 356215, 362674]
         self.current_mn = self.data[0][0]
         self.transforms = transforms
-
+        self.last_index = self.l[self.current_mn-1]
+        self.num_of_last_data = self.l2[self.current_mn-1] - self.l[self.current_mn-1]*100
     def __getitem__(self, index):
 
         if self.transforms is not None:
@@ -55,7 +56,7 @@ class MyDataset(Dataset):
         else:
             # data = self.data[index]
             data = self.data[index*100:index*100+100,:]
-        if index is self.l[self.current_mn-1]:
+        if index == self.last_index:
             data = self.data[self.l2[self.current_mn-1]-100:self.l2[self.current_mn-1], :]
         data = pd.DataFrame(data=data,
           index=np.array(range(0, 100)),
@@ -64,9 +65,10 @@ class MyDataset(Dataset):
         for i in range(69):
             if data[i].isnull().any():
                 flag = True
-
+        origin_data = data
         if flag:
             using_teacher_enforcing = True
+
             data = data.fillna(0)
         else:
             using_teacher_enforcing = False
@@ -76,7 +78,7 @@ class MyDataset(Dataset):
         return torch.tensor(data.astype('f4')), using_teacher_enforcing
 
     def __len__(self):
-        return self.l[self.current_mn-1]   #machine number minus 1
+        return self.last_index+1   #machine number minus 1
 
 
 def metric_fun(pred , label):
@@ -139,18 +141,25 @@ for i in tqdm(range(1,34)):
     dataset_loader = torch.utils.data.DataLoader(dataset=dataset,
                                                  batch_size=1,
                                                  shuffle=False)
+    res = []
     for step, batch_x in tqdm(enumerate(dataset_loader), total=len(dataset_loader)):
         use_teacher_forcing = batch_x[1]
         batch_x = batch_x[0]
         batch_x = pp.transform(batch_x)
         # print(pp.recover(batch_x).shape)
         batch_x = batch_x.view(para.sequence_length, -1, 141).float()
-        data = forecast(batch_x, encoder, decoder,use_teacher_forcing=use_teacher_forcing)
-        batch_x = batch_x[:,0,:]
-        data = pp.recover(batch_x)
-        print(data)
-
-    df = pd.concat([df,data],axis = 0)
+        if use_teacher_forcing:
+            result = forecast(batch_x, encoder, decoder,use_teacher_forcing=use_teacher_forcing)
+        else:
+            result = batch_x
+        result = result[:,0,:]
+        result = pp.recover(result) #numpy.ndarray
+        if step == len(dataset_loader)-1: # the last step
+            result = result[100-dataset.num_of_last_data:100,:]
+        res.append(result)
+    data = np.concatenate(res,axis=0)
+    print(data.shape)
+    # df = pd.concat([df,data],axis = 0) not completed
 
 
 sub = df[df.flag==1].copy().reset_index(drop = True)

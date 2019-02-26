@@ -28,31 +28,47 @@ class MyDataset(Dataset):
     def __init__(self, file_path, transforms=None):
         self.dl = DataLoader()
         self.file_path = file_path
-        self.l = [3464, 3446, 3476, 3449, 3429, 3468, 3463, 3463, 3444, 3440, 3456, 3458, 3504, 3478, 3511, 3407, 3395, 3414, 3453, 3478, 3448, 3458, 3455, 3479, 3469, 3502, 3475, 3464, 3488, 3461, 3473, 3397, 3468]
+        # 未处理不连续L序列数
+        # self.l = [3464, 3446, 3476, 3449, 3429, 3468, 3463, 3463, 3444, 3440, 3456, 3458, 3504, 3478, 3511, 3407, 3395, 3414, 3453, 3478, 3448, 3458, 3455, 3479, 3469, 3502, 3475, 3464, 3488, 3461, 3473, 3397, 3468]
+        # 处理后连续L序列数
+        self.l = [3362,3325,3357,3340,3326,3365,3364,3363,3337,3336,3353,3354,3406,3370,3403,3301,3299,3299,3342,3369,3335,3349,3347,3360,3367,3395,3363,3339,3397,3370,3366,3281,3348]
         self.current_mn = None
         self.data = None
+        self.counter = 0
         self.transforms = transforms
 
 
     def __getitem__(self, index):
-        # 寻找index对应的machine_num和index
+        # 寻找counter对应的machine_num和index
         machine_num = 0
         for i in range(len(self.l)):
             if index>=self.l[i]:
                 index-=self.l[i]
             else:
-                machine_num = i
+                machine_num = i+1
                 break
         # Load data
         if self.current_mn != machine_num:
             self.current_mn = machine_num
-            self.data = self.dl(para.train_data,machine_num)[:,1:]
+            self.counter = 0
+            self.data = self.dl(para.train_data,machine_num)
+
+        flag = True # True: 尚未得到新序列， False: 得到新序列
+        while flag:
+            d = self.data[self.counter*para.sequence_length:self.counter*para.sequence_length+para.sequence_length]
+            if not d.isna().any().any(): # 不存在缺失
+                d = d.values # to numpy
+                diff = d[1:,0] - d[:-1,0]
+                diff = np.array([di.total_seconds() for di in diff])
+                if all(diff<14): # 所有记录连续
+                    data = d[:,1:] # 去除时间列 TODO: 保留时间列用于还原
+                    flag = False # 所有记录连续
+            self.counter +=1
+
 
         if self.transforms is not None:
             data = self.transforms.transform(self.data[index])
-        else:
-            # data = self.data[index]
-            data = self.data[index*100:index*100+100,:]
+        # return shape: L x F_original (100 x  69)
         return torch.tensor(data.astype('f4'))
 
     def __len__(self):
@@ -133,7 +149,7 @@ def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, deco
 
     input_length = input_tensor.size(0)
     target_length = target_tensor.size(0)
-    encoder_outputs = torch.zeros(100, encoder.hidden_size, device=device)
+    encoder_outputs = torch.zeros(para.sequence_length, encoder.hidden_size, device=device)
 
     loss = 0.
     #input_tensor: L x B x F
@@ -179,8 +195,8 @@ def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, deco
 
 def main():
     # 1.加载数据
-    data = np.loadtxt('small.csv',dtype=np.str,delimiter=',',skiprows=1)
-    data = torch.tensor(data[:,1:].astype('f4'))
+    # data = np.loadtxt('small.csv',dtype=np.str,delimiter=',',skiprows=1)
+    # data = torch.tensor(data[:,1:].astype('f4'))
 
     # 2.预处理
     with open("meta.pkl",'rb') as file:
@@ -204,18 +220,19 @@ def main():
                                                  batch_size=para.batch_size,
                                                  shuffle=False)
     # 4.训练
-    for epoch in range(10):
+    for epoch in range(para.num_epoch):
         print('epoch {0} start'.format(epoch), flush=True)
-        for step, batch_x in tqdm(enumerate(dataset_loader), total=len(dataset_loader)):
+        pbar = tqdm(enumerate(dataset_loader), total=len(dataset_loader))
+        for step, batch_x in pbar:
             encoder.zero_grad()
             decoder.zero_grad()
             batch_x = pp.transform(batch_x)
             # print(pp.recover(batch_x).shape)
             batch_x = batch_x.view(para.sequence_length, -1, 141).float()
             loss = train(batch_x, batch_x, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion)
-            print(loss)
-    torch.save(encoder,'encoder0.pkl')
-    torch.save(decoder,'decoder0.pkl')
+            pbar.set_description("Loss {0:.4f}".format(loss))
+        torch.save(encoder,'encoder{0}.pkl'.format(epoch+1))
+        torch.save(decoder,'decoder{0}.pkl'.format(epoch+1))
     # loss = train(inputs,inputs,encoder,decoder,encoder_optimizer, decoder_optimizer, criterion)
     # print(loss)
 

@@ -3,6 +3,7 @@ import para
 import csv
 import numpy as np
 import torch
+import pandas as pd
 from torch.utils.data.dataset import Dataset
 from torchvision import transforms
 from sklearn.preprocessing import OneHotEncoder
@@ -13,27 +14,17 @@ class DataLoader:
         self.t = ['M'] + ['i4'] + ['f4']*15+['i4']+['f4']*3+['i4']+['f4']*26+['i4']+['f4']*5+['i4']+['f4']*12+['i4']+['f4']*2
 
     def __call__(self, train_data_path, machine_num):
-        file_path = train_data_path +  '{0:03d}'.format(machine_num+1) + '/201807.csv'
-        data = np.loadtxt(file_path,dtype=np.str,delimiter=',',skiprows=1)
-        mask = (data!='').all(axis=1)
-        full_data = data[mask]
-        print(full_data.shape)
-        # p_miss_data = data[np.logical_not(mask)]
-        #
-        # # record to be filled
-        # file_path = train_data_path+'template_submit_result.csv'
+        # file_path = train_data_path +  '{0:03d}'.format(machine_num+1) + '/201807.csv'
         # data = np.loadtxt(file_path,dtype=np.str,delimiter=',',skiprows=1)
-        # mask = data[:,1]==str(machine_num)
-        # all_miss_data = data[mask]
-        #
-        # raw_data_str = np.array(full_data)
-        # raw_data = full_data
-        #
-        # for i in range(70):
-        #     s = raw_data_str[:,i].astype(self.t[i])
-        #     raw_data.append(s)
-
-        return full_data #,p_miss_data,all_miss_data
+        # mask = (data!='').all(axis=1)
+        # full_data = data[mask]
+        # print(full_data.shape)
+        data = pd.read_csv(train_data_path+str(machine_num).zfill(3)+'/201807.csv',parse_dates=[0])
+        res = pd.read_csv(train_data_path + 'template_submit_result.csv',parse_dates=[0])[['ts','wtid']]
+        res = res[res['wtid']==machine_num]
+        data = res.merge(data, on=['wtid','ts'],how = 'outer')
+        data = data.sort_values(['wtid','ts']).reset_index(drop = True)
+        return data
 
 
 # class used for pre-process data 
@@ -77,7 +68,8 @@ class PreProc:
         data: (N,timestep,69)-->多条时序数据
         '''
         # print(data.shape)
-        if data.ndimension() <= 2:
+        nd = len(data.shape)
+        if nd <= 2:
             res = []
             for i in range(len(self.con_features)):
                 d = data[:,i]

@@ -13,6 +13,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from torch.utils.data.dataset import Dataset
 from torchvision import transforms
+import pandas as pd
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 teacher_forcing_ratio = 0.5
@@ -135,7 +136,7 @@ def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, deco
             #decoder_hidden: B x H
             decoder_output, decoder_hidden = decoder(
                 decoder_input, decoder_hidden)
-            loss += criterion(decoder_output,  [di])
+            loss += criterion(decoder_output, target_tensor[di])
             decoder_input = target_tensor[di]  # Teacher forcing
 
     else:
@@ -157,9 +158,18 @@ def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, deco
 
 def main():
     # 1.加载数据
-    data = np.loadtxt('small.csv',dtype=np.str,delimiter=',',skiprows=1)
-    data = torch.tensor(data[:,1:].astype('f4'))
-
+    # data = np.loadtxt('small.csv',dtype=np.str,delimiter=',',skiprows=1)
+    # data = torch.tensor(data[:,1:].astype('f4'))
+    i=1
+    data = pd.read_csv(para.train_data+str(i).zfill(3)+'/201807.csv',parse_dates=[0])
+    res = pd.read_csv(para.train_data + 'template_submit_result.csv',parse_dates=[0])[['ts','wtid']]
+    
+    res = res[res['wtid']==i]
+    data = res.merge(data, on=['wtid','ts'],how = 'outer')
+    data = data.sort_values(['wtid','ts']).reset_index(drop = True)
+    print(data)
+    data = torch.tensor(data[0:200].values[:,1:].astype('f4')).view(para.sequence_length,-1,69)
+    
     # 2.预处理
     with open("meta.pkl",'rb') as file:
         pp = pickle.loads(file.read())

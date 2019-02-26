@@ -8,10 +8,8 @@ for i in range(68):
     attrs.append("var{0:03d}".format(i+1))
 
 hidden_size = 150
-batch_size = 1
+batch_size = 32
 sequence_length = 100
 learning_rate = 0.0001
 
 num_epoch = 10
-
-

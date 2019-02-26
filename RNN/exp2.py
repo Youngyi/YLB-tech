@@ -13,6 +13,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from torch.utils.data.dataset import Dataset
 from torchvision import transforms
+from model import EncoderRNN, DecoderRNN
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 teacher_forcing_ratio = 0.5
@@ -39,7 +40,9 @@ class MyDataset(Dataset):
 
 
     def __getitem__(self, index):
-        # 寻找counter对应的machine_num和index
+        if index == 0: #新epoch重置counter
+            self.counter = 0
+        # 寻找index对应的machine_num
         machine_num = 0
         for i in range(len(self.l)):
             if index>=self.l[i]:
@@ -47,7 +50,7 @@ class MyDataset(Dataset):
             else:
                 machine_num = i+1
                 break
-        # Load data
+        # 加载数据集
         if self.current_mn != machine_num:
             self.current_mn = machine_num
             self.counter = 0
@@ -74,75 +77,8 @@ class MyDataset(Dataset):
     def __len__(self):
         return sum(self.l)
 
-class EncoderRNN(nn.Module):
-    def __init__(self, input_size, hidden_size):
-        super(EncoderRNN, self).__init__()
-        self.hidden_size = hidden_size
-        self.gru = nn.GRU(input_size, hidden_size)
-
-    def forward(self, input, hidden):
-        '''
-        input: L x B x F
-        hidden: 1 x B x H
-        output: L x B x H
-        '''
-        output, hidden = self.gru(input,hidden)
-        return output, hidden
-
-    def initHidden(self):
-        return torch.zeros(1,para.batch_size, self.hidden_size, device=device)
-
-class DecoderRNN(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size):
-        super(DecoderRNN, self).__init__()
-        self.hidden_size = hidden_size
-        self.gru = nn.GRUCell(input_size, hidden_size)
-        self.out = nn.Linear(hidden_size, output_size)
-
-    def forward(self, input, hidden):
-        '''
-        input: B x F
-        hidden: B x H
-        output: B x F
-        '''
-        output = input.view(para.batch_size, -1)
-        output = F.relu(output)
-        output = self.gru(output, hidden) # B x H
-        hidden = output
-        output = self.out(output)  # B x F
-        return output, hidden
-
-    def initHidden(self):
-        return torch.zeros(para.batch_size, self.hidden_size, device=device)
-
-
-def forecast(input_tensor, encoder, decoder):
-    encoder_outputs = torch.zeros(100, encoder.hidden_size, device=device)
-    encoder_hidden = encoder.initHidden()
-
-    encoder_output, encoder_hidden = encoder(input_tensor, encoder_hidden)
-
-    decoder_input = torch.zeros_like(input_tensor[0])  # B x F
-
-    decoder_hidden = encoder_hidden.view(para.batch_size, -1)  # B x H
-    if True:
-        # Teacher forcing: Feed the target as the next input
-        for di in range(100):
-            decoder_output, decoder_hidden = decoder(
-                decoder_input, decoder_hidden)
-            decoder_input = input_tensor[di]  # Teacher forcing
-
-    else:
-        # Without teacher forcing: use its own predictions as the next input
-        for di in range(100):
-            decoder_output, decoder_hidden = decoder(
-                decoder_input, decoder_hidden)
-            decoder_input = decoder_output.detach()  # detach from history as input
-    return decoder_output
-
-
 def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion):
-    encoder_hidden = encoder.initHidden()
+    encoder_hidden = encoder.initHidden(input_tensor.size(1))
 
     encoder_optimizer.zero_grad()
     decoder_optimizer.zero_grad()
@@ -161,7 +97,7 @@ def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, deco
 
     decoder_input = torch.zeros_like(input_tensor[0]) # B x F
 
-    decoder_hidden = encoder_hidden.view(para.batch_size,-1) # B x H
+    decoder_hidden = encoder_hidden.view(-1,para.hidden_size) # B x H
 
     use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
 
@@ -186,7 +122,6 @@ def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, deco
             loss += criterion(decoder_output, target_tensor[di].float())
 
     loss.backward()
-    # print(loss.data)
 
     encoder_optimizer.step()
     decoder_optimizer.step()
@@ -195,18 +130,15 @@ def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, deco
 
 def main():
     # 1.加载数据
-    # data = np.loadtxt('small.csv',dtype=np.str,delimiter=',',skiprows=1)
-    # data = torch.tensor(data[:,1:].astype('f4'))
+    dataset = MyDataset(para.train_data)
+    dataset_loader = torch.utils.data.DataLoader(dataset=dataset,
+                                                 batch_size=para.batch_size,
+                                                 shuffle=False)
 
     # 2.预处理
     with open("meta.pkl",'rb') as file:
         pp = pickle.loads(file.read())
     print('加载预处理meta完成。',flush=True)
-    # inputs = pp.transform(data)
-    # feature_num = inputs.shape[-1]
-    # print(inputs.shape)
-    # 2.1 batch化
-    # inputs = inputs.view(para.sequence_length,-1,feature_num).float() # L x B x F
 
     # 3.模型
     encoder = EncoderRNN(141,para.hidden_size).to(device)
@@ -215,10 +147,7 @@ def main():
     encoder_optimizer = optim.SGD(encoder.parameters(), lr=para.learning_rate)
     decoder_optimizer = optim.SGD(decoder.parameters(), lr=para.learning_rate)
     criterion = nn.MSELoss()
-    dataset = MyDataset(para.train_data)
-    dataset_loader = torch.utils.data.DataLoader(dataset=dataset,
-                                                 batch_size=para.batch_size,
-                                                 shuffle=False)
+    
     # 4.训练
     for epoch in range(para.num_epoch):
         print('epoch {0} start'.format(epoch), flush=True)
@@ -227,14 +156,13 @@ def main():
             encoder.zero_grad()
             decoder.zero_grad()
             batch_x = pp.transform(batch_x)
-            # print(pp.recover(batch_x).shape)
             batch_x = batch_x.view(para.sequence_length, -1, 141).float()
             loss = train(batch_x, batch_x, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion)
+            # 进度条中展示loss
             pbar.set_description("Loss {0:.4f}".format(loss))
+        # 5.保存模型
         torch.save(encoder,'encoder{0}.pkl'.format(epoch+1))
         torch.save(decoder,'decoder{0}.pkl'.format(epoch+1))
-    # loss = train(inputs,inputs,encoder,decoder,encoder_optimizer, decoder_optimizer, criterion)
-    # print(loss)
 
 
 if __name__ == '__main__':

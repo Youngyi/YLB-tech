@@ -14,11 +14,6 @@ class DataLoader:
         self.t = ['M'] + ['i4'] + ['f4']*15+['i4']+['f4']*3+['i4']+['f4']*26+['i4']+['f4']*5+['i4']+['f4']*12+['i4']+['f4']*2
 
     def __call__(self, train_data_path, machine_num):
-        # file_path = train_data_path +  '{0:03d}'.format(machine_num+1) + '/201807.csv'
-        # data = np.loadtxt(file_path,dtype=np.str,delimiter=',',skiprows=1)
-        # mask = (data!='').all(axis=1)
-        # full_data = data[mask]
-        # print(full_data.shape)
         data = pd.read_csv(train_data_path+str(machine_num).zfill(3)+'/201807.csv',parse_dates=[0])
         res = pd.read_csv(train_data_path + 'template_submit_result.csv',parse_dates=[0])[['ts','wtid']]
         res = res[res['wtid']==machine_num]
@@ -80,7 +75,7 @@ class PreProc:
                     res.append(stda.transform(d))
                 else: #dis
                     d = d.int().reshape(-1, 1)
-                    enc = OneHotEncoder(categories='auto')
+                    enc = OneHotEncoder(categories='auto',handle_unknown='ignore')
                     enc.fit([[c] for c in self.pp_model[i]])
                     res.append(enc.transform(d).todense())
             return torch.tensor(np.concatenate(res,axis=1))

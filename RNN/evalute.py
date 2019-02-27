@@ -21,7 +21,7 @@ def evalute(input_tensor, encoder, decoder):
     '''
     预测函数
     '''
-    encoder_hidden = encoder.initHidden()
+    encoder_hidden = encoder.initHidden(1)
     target_length = input_tensor.size(0)
     #input_tensor: L x B x F
     #encoder_hidden: 1 x B x H
@@ -29,7 +29,7 @@ def evalute(input_tensor, encoder, decoder):
     encoder_output, encoder_hidden = encoder(
             input_tensor, encoder_hidden)
     decoder_input = torch.zeros_like(input_tensor[0]) # B x F
-    decoder_hidden = encoder_hidden.view(para.batch_size,-1) # B x H
+    decoder_hidden = encoder_hidden.view(-1, para.hidden_size) # B x H
     # Without teacher forcing: use its own predictions as the next input
     for di in range(target_length):
         decoder_output, decoder_hidden = decoder(

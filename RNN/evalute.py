@@ -75,11 +75,13 @@ def main():
     
     # 5.制作submit文件
     res = pd.read_csv(para.train_data + 'template_submit_result.csv',parse_dates=[0])[['ts','wtid']]
-    DF = pd.merge(res,data, on=['wtid','ts'],how = 'left')
-
+    DF = pd.merge(res,data, on=['wtid','ts'],how = 'inner')
+    print(res.shape,data.shape,DF.shape)
+    # print(DF.isna().any(axis=1))
     DF.to_csv('sub_DCIC.csv',index=False,float_format='%.2f')
     print('结果输出完成',flush=True)
+    return data
 
 
 if __name__ == '__main__':
-    main()
+    data = main()

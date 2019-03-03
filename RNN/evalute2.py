@@ -97,7 +97,7 @@ def main():
                 raw_pred = raw_pred[90:100]
                 new_df = fill_pred(part_data,raw_pred)
                 if 100 + i * psl > data.shape[0]:
-                    data[data.shape[0] - 10:data.shape[0]] = new_dfforecast_data
+                    data[data.shape[0] - 10:data.shape[0]] = new_df
                 else:
                     data[90 + i * psl:100 + i * psl] = new_df
         forecast_data = pd.concat([forecast_data, data], axis=0)

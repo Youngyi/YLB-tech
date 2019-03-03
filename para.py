@@ -1,5 +1,5 @@
 # train_data = '/Users/jiayuzhai/Downloads/dataset/'
-train_data = '/Users/jiayuzhai/Downloads/dataset/'
+train_data = '/Users/yangyucheng/Desktop/SCADA/dataset/'
 to_be_submit = train_data + 'template_submit_result.csv'
 machine_num = 33
 

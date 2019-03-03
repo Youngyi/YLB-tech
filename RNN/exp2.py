@@ -1,4 +1,6 @@
 import numpy as np
+import sys
+sys.path.append("..")
 from utilities import DataLoader, PreProc
 import para
 import os 
@@ -78,8 +80,15 @@ class MyDataset(Dataset):
         return sum(self.l)
 
 def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion):
+    #drop out part
+    #mask last 10 data from length 100 as 0
+    input = input_tensor.numpy()
+    input = input[:90]
+    padding = np.zeros((10,input.shape[1],input.shape[2]))
+    input = np.concatenate([input,padding])
+    input_tensor = torch.tensor(input.astype('f4'))
+    #initalize encoder_hidden
     encoder_hidden = encoder.initHidden(input_tensor.size(1))
-
     encoder_optimizer.zero_grad()
     decoder_optimizer.zero_grad()
 

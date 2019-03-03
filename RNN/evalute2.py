@@ -32,13 +32,15 @@ def evalute(input_tensor, encoder, decoder):
             input_tensor, encoder_hidden)
     decoder_input = torch.zeros_like(input_tensor[0]) # B x F
     decoder_hidden = encoder_hidden.view(-1, para.hidden_size) # B x H
+    output = []
     # Without teacher forcing: use its own predictions as the next input
     for di in range(target_length):
         decoder_output, decoder_hidden = decoder(
             decoder_input, decoder_hidden)
         decoder_input = decoder_output.detach()  # detach from history as input
+        output.append(decoder_output)
+    return torch.stack(output, dim=1)
 
-    return decoder_output
 
 def fill_pred(df,pred):
     '''
@@ -47,6 +49,20 @@ def fill_pred(df,pred):
     mask = df.isna().values.astype('i2')[:,1:]
     df = df.fillna(0)
     return np.concatenate([df['ts'].values.reshape(-1,1),df.values[:,1:] + pred * mask],axis=1)
+def get_data(i):
+    """
+    get_ori_data
+    """
+    data = pd.read_csv('/Users/yangyucheng/Desktop/SCADA/dataset/' + str(i).zfill(3) + '/201807.csv', parse_dates=[0])
+    res = pd.read_csv('/Users/yangyucheng/Desktop/SCADA/template_submit_result.csv', parse_dates=[0])[['ts', 'wtid']]
+    print(data.shape)
+    res = res[res['wtid'] == i]
+    # res['flag'] = 1
+    data = res.merge(data, on=['wtid', 'ts'], how='outer')
+    data = data.sort_values(['wtid', 'ts']).reset_index(drop=True)
+
+    print(data.shape)
+    return data
 
 def main():
     # 1.预处理meta
@@ -54,31 +70,42 @@ def main():
         pp = pickle.loads(file.read())
     print('加载预处理meta完成。',flush=True)
     # 2.加载模型
-    encoder = torch.load('encoder{0}.pkl'.format(epoch+1))
-    decoder = torch.load('decoder{0}.pkl'.format(epoch+1))
+    encoder = torch.load('encoder10.pkl')
+    decoder = torch.load('decoder10.pkl')
     print('加载模型完成。',flush=True)
     
     # 3.加载数据
-    data = pd.read_csv('testset.csv',parse_dates=[0])
+
     sl = para.sequence_length 
-    hsl = sl//2 # half sequence length
-    
-    # 4.预测
-    for i in tqdm(range(data.shape[0]//hsl-1)):
-        df = data[i*hsl:i*hsl+sl]
-        # if check_continue(df):
-        inputs = pp.transform(torch.tensor(df.values[:,1:].astype('f4')))
-        inputs[np.isnan(inputs)] = 0
-        processed_pred = evalute(inputs.view(para.sequence_length,-1,141).float(),encoder,decoder)›
-        print(processed_pred.shape)
-        raw_pred = pp.recover(processed_pred.detach())
-        new_df = fill_pred(df,raw_pred)
-        data[i*hsl:i*hsl+sl] = new_df
+    psl = sl//10 # half sequence length
+    forecast_data = pd.DataFrame()
+    for i in tqdm(range(1, 34)):
+        data = get_data(i)
+        for i in tqdm(range(data.shape[0]//psl)):
+            if 100+i*psl > data.shape[0]:
+                part_data = data[data.shape[0]-10:data.shape[0]]
+                df = data[data.shape[0]-100:data.shape[0]]
+            else:
+                part_data = data[90+i*psl:100+i*psl]
+                df = data[i * psl:100 + i * psl]
+            if part_data.isna().any().any():
+                inputs = pp.transform(torch.tensor(df.values[:, 1:].astype('f4')))
+                inputs[np.isnan(inputs)] = 0
+                processed_pred = evalute(inputs.view(para.sequence_length, -1, 141).float(), encoder, decoder)
+                processed_pred = processed_pred[0]
+                raw_pred = pp.recover(processed_pred.detach())
+                raw_pred = raw_pred[90:100]
+                new_df = fill_pred(part_data,raw_pred)
+                if 100 + i * psl > data.shape[0]:
+                    data[data.shape[0] - 10:data.shape[0]] = new_dfforecast_data
+                else:
+                    data[90 + i * psl:100 + i * psl] = new_df
+        forecast_data = pd.concat([forecast_data, data], axis=0)
     print('预测完成',flush=True)
     
     # 5.制作submit文件
     res = pd.read_csv(para.train_data + 'template_submit_result.csv',parse_dates=[0])[['ts','wtid']]
-    DF = pd.merge(res,data, on=['wtid','ts'],how = 'inner')
+    DF = pd.merge(res,forecast_data, on=['wtid','ts'],how = 'inner')
     print(res.shape,data.shape,DF.shape)
     # print(DF.isna().any(axis=1))
     DF.to_csv('epoch'+str(epoch)+'.csv',index=False,float_format='%.2f')

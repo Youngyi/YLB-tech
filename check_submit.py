@@ -1,6 +1,6 @@
 #coding=utf-8
 import pandas as pd
-data = pd.read_csv('sub_DCIC.csv')
+data = pd.read_csv('RNN/sub_DCIC.csv')
 for columname in data.columns:
     if data[columname].count() != len(data):
         loc = data[columname][data[columname].isnull().values==True].index.tolist()

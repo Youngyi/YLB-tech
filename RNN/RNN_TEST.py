@@ -24,8 +24,6 @@ import pickle
 from tqdm import tqdm
 
 
-
-
 # Hyper Parameters
 TIME_STEP = 10      # rnn time step / image height
 INPUT_SIZE = 1      # rnn input size / image width
@@ -71,6 +69,7 @@ class RNN(nn.Module):
 
 
 rnn = RNN(141,500,141)
+rnn = rnn.cuda()
 print(rnn)
 
 
@@ -184,9 +183,11 @@ def main():
         pbar = tqdm(enumerate(dataset_loader), total=len(dataset_loader))
         for step, batch_x in pbar:
             rnn.zero_grad()
-            batch_x = pp.transform(batch_x)
-            target = batch_x[90:100].float()
-            prediction, h_state1, h_state2 = rnn(batch_x.view(32, -1, 141).float(), h_state1, h_state2)
+            batch_x = pp.transform(batch_x).cuda()
+            batch_x = batch_x.view(32, -1, 141).float()
+            target = batch_x[:,90:100,:].cuda()
+            prediction, h_state1, h_state2 = rnn(batch_x, h_state1, h_state2)
+            print(prediction.shape)
             loss = loss_func(prediction, target)
             loss.backward(retain_graph=True)
             pbar.set_description("Loss {0:.4f}".format(loss.item()))

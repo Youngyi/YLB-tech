@@ -184,10 +184,10 @@ def main():
         for step, batch_x in pbar:
             rnn.zero_grad()
             batch_x = pp.transform(batch_x).cuda()
-            batch_x = batch_x.view(32, -1, 141).float()
+            batch_x = batch_x.view(32, -1, 141).float().cuda()
             target = batch_x[:,90:100,:].cuda()
             prediction, h_state1, h_state2 = rnn(batch_x, h_state1, h_state2)
-            print(prediction.shape)
+
             loss = loss_func(prediction, target)
             loss.backward(retain_graph=True)
             pbar.set_description("Loss {0:.4f}".format(loss.item()))

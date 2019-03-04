@@ -7,7 +7,7 @@ sys.path.append("..")
 import para
 import numpy as np
 from tqdm import tqdm
-epoch = 8
+epoch = 0
 
 def check_continue(df):
     '''
@@ -69,10 +69,12 @@ def main():
         # if check_continue(df):
         inputs = pp.transform(torch.tensor(df.values[:,1:].astype('f4')))
         inputs[np.isnan(inputs)] = 0
-        processed_pred = evalute(inputs.view(para.sequence_length,-1,141).float(),encoder,decoder)›
+        processed_pred = evalute(inputs.view(para.sequence_length,-1,141).float(),encoder,decoder)
         print(processed_pred.shape)
         raw_pred = pp.recover(processed_pred.detach())
+        print(raw_pred.shape)
         new_df = fill_pred(df,raw_pred)
+        print(new_df.shape)
         data[i*hsl:i*hsl+sl] = new_df
     print('预测完成',flush=True)
     

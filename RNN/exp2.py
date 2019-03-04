@@ -7,8 +7,8 @@ import os
 import pickle
 import matplotlib.pyplot as plt
 import random
-# from tqdm import tqdm_notebook as tqdm
-from tqdm import tqdm
+from tqdm import tqdm_notebook as tqdm
+# from tqdm import tqdm
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -106,7 +106,7 @@ def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, deco
     input_length = input_tensor.size(0)
     target_length = target_tensor.size(0)
     target_tensor = target_tensor.to(device)
-    encoder_outputs = torch.zeros(para.sequence_length, encoder.hidden_size, device=device)
+    # encoder_outputs = torch.zeros(para.sequence_length, encoder.hidden_size, device=device)
 
     loss = 0.
     #input_tensor: L x B x F
@@ -195,9 +195,10 @@ def main():
             decoder.zero_grad()
             
             masked_batch_x, batch_x = mask_and_pp(batch_x,pp)
+            # batch_x = pp.transform(batch_x).float().transpose(0,1)
             loss,pred = train(masked_batch_x.to(device), batch_x.to(device), encoder, decoder, encoder_optimizer, decoder_optimizer, criterion)
-            if (step+1)%100==0:
-                print(batch_x[-1,0],pred[-1,0],flush=True)
+            # if (step+1)%100==0:
+            #     print(batch_x[-1,0],pred[-1,0],flush=True)
             # 进度条中展示loss
             pbar.set_description("Loss {0:.4f}".format(loss))
 

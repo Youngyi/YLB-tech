@@ -78,9 +78,9 @@ class PreProc:
                     sum = self.pp_model[i]['sum']
                     num = self.pp_model[i]['num']
                     mean = sum/num
-                    var = squ_sum/num - mean**2
+                    var = squ_sum/num - mean**2 #平方的均值-均值的平方
                     stda = StandardScaler()
-                    stda.fit([[mean-np.sqrt(1.5*var)],[mean],[mean+np.sqrt(1.5)]])
+                    stda.fit([[mean-np.sqrt(1.5*var)],[mean],[mean+np.sqrt(1.5*var)]])
                     res.append(stda.transform(d))
                 else: #dis
                     d = d.int().reshape(-1, 1)
@@ -100,9 +100,9 @@ class PreProc:
                     sum = self.pp_model[i]['sum']
                     num = self.pp_model[i]['num']
                     mean = sum/num
-                    var = squ_sum/num - mean**2
+                    var = squ_sum/num - mean**2 #平方的均值-均值的平方
                     stda = StandardScaler()
-                    stda.fit([[mean-np.sqrt(1.5*var)],[mean],[mean+np.sqrt(1.5)]])
+                    stda.fit([[mean-np.sqrt(1.5*var)],[mean],[mean+np.sqrt(1.5*var)]])
                     res.append(stda.transform(d))
                 else:  # dis
                     d = d.int().reshape(-1, 1)
@@ -134,9 +134,9 @@ class PreProc:
                 sum = self.pp_model[j]['sum']
                 num = self.pp_model[j]['num']
                 mean = sum/num
-                var = squ_sum/num - mean**2
+                var = squ_sum/num - mean**2 #平方的均值-均值的平方
                 stda = StandardScaler()
-                stda.fit([[mean-np.sqrt(1.5*var)],[mean],[mean+np.sqrt(1.5)]])
+                stda.fit([[mean-np.sqrt(1.5*var)],[mean],[mean+np.sqrt(1.5*var)]])
                 res.append(stda.inverse_transform(d))
                 i = i + 1
                 j = j + 1

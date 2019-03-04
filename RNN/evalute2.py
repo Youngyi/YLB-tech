@@ -6,7 +6,8 @@ import sys
 sys.path.append("..")
 import para
 import numpy as np
-from tqdm import tqdm
+from tqdm import tqdm_notebook as tqdm
+from utilities import PreProc
 epoch = 8
 
 def check_continue(df):
@@ -90,8 +91,8 @@ def main():
                 part_data = data[90+i*psl:100+i*psl]
                 df = data[i * psl:100 + i * psl]
             if part_data.isna().any().any():
-                print('------------origin_df-------------------------')
-                print(df.values[80:90, 1:])
+                # print('------------origin_df-------------------------')
+                # print(df.values[80:90, 1:])
                 inputs = pp.transform(torch.tensor(df.values[:, 1:].astype('f4')))
                 inputs[np.isnan(inputs)] = 0
                 processed_pred = evalute(inputs.view(para.sequence_length, -1, 141).float(), encoder, decoder)
@@ -103,8 +104,8 @@ def main():
                     data[data.shape[0] - 10:data.shape[0]] = new_df
                 else:
                     data[90 + i * psl:100 + i * psl] = new_df
-                print('------------new_df-------------------------')
-                print(new_df)
+                # print('------------new_df-------------------------')
+                # print(new_df)
         forecast_data = pd.concat([forecast_data, data], axis=0)
     print('预测完成',flush=True)
     

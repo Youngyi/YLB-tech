@@ -7,3 +7,4 @@ baseline*
 sub*
 testset
 *.pkl
+.DS_Store

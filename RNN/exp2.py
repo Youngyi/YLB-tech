@@ -188,7 +188,7 @@ def main():
             decoder.zero_grad()
             
             masked_batch_x, batch_x = mask_and_pp(batch_x,pp)
-            loss = train(masked_batch_x, batch_x, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion)
+            loss = train(masked_batch_x.to(device), batch_x.to(device), encoder, decoder, encoder_optimizer, decoder_optimizer, criterion)
             # 进度条中展示loss
             pbar.set_description("Loss {0:.4f}".format(loss))
         val_data = torch.tensor(dataset.getValidSet().astype('f4'))

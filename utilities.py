@@ -3,7 +3,9 @@ import para
 import csv
 import numpy as np
 import torch
+import os
 import pandas as pd
+import pickle
 from torch.utils.data.dataset import Dataset
 from torchvision import transforms
 from sklearn.preprocessing import OneHotEncoder
@@ -26,24 +28,26 @@ class DataLoader:
 class PreProc:
     def __init__(self,types):
         self.con_features = [True if t=='f4' else False for t in types] # 69个字段预处理分类操作
-        self.dis_features = np.logical_not(self.con_features)
-        self.post_con_feature = []
+        # self.dis_features = np.logical_not(self.con_features)
         self.pp_model = []
         for f in self.con_features:
             if f:
-                self.pp_model.append({'min':0.,'max':0.})
+                self.pp_model.append({'sum':0.,'square_sum':0.,'num':0})
             else:
                 self.pp_model.append(set())
         
     def fit(self,data):
         for i,f in enumerate(self.con_features):
             if f: # continuous 
-                d = data[:,i].astype('f4')
-                self.pp_model[i]['min'] = min(self.pp_model[i]['min'], np.min(d))
-                self.pp_model[i]['max'] = max(self.pp_model[i]['max'], np.max(d))
+                d = data[:,i][np.logical_not(np.isnan(data[:,i].astype('f4')))].astype('f4')
+                # self.pp_model[i]['min'] = min(self.pp_model[i]['min'], np.min(d))
+                # self.pp_model[i]['max'] = max(self.pp_model[i]['max'], np.max(d))
+                self.pp_model[i]['sum'] += np.sum(d)
+                self.pp_model[i]['square_sum'] += np.sum(d**2)
+                self.pp_model[i]['num'] += d.shape[0]
             else: # discreted
                 from collections import Counter
-                d = data[:,i].astype('i4')
+                d = data[:,i][np.logical_not(np.isnan(data[:,i].astype('f4')))].astype('i4')
                 for key in Counter(d):
                     if key not in self.pp_model[i]:
                         self.pp_model[i].add(key)
@@ -54,7 +58,7 @@ class PreProc:
             else:
                 for num in range(len(self.pp_model[i])):
                     self.post_con_features.append(False)
-        print(len(self.post_con_features))
+        # print(len(self.post_con_features))
         
     def transform(self,data):
         '''
@@ -70,8 +74,13 @@ class PreProc:
                 d = data[:,i]
                 if self.con_features[i]: # con
                     d = d.double().reshape(-1, 1)
-                    stda = MinMaxScaler()
-                    stda.fit([[self.pp_model[i]['min']], [self.pp_model[i]['max']]])
+                    squ_sum = self.pp_model[i]['square_sum']
+                    sum = self.pp_model[i]['sum']
+                    num = self.pp_model[i]['num']
+                    mean = sum/num
+                    var = squ_sum/num - mean**2
+                    stda = StandardScaler()
+                    stda.fit([[mean-np.sqrt(1.5*var)],[mean],[mean+np.sqrt(1.5)]])
                     res.append(stda.transform(d))
                 else: #dis
                     d = d.int().reshape(-1, 1)
@@ -87,8 +96,13 @@ class PreProc:
                 d = data[:, :, i]
                 if self.con_features[i]:  # con
                     d = d.double().reshape(-1, 1)
-                    stda = MinMaxScaler()
-                    stda.fit([[self.pp_model[i]['min']], [self.pp_model[i]['max']]])
+                    squ_sum = self.pp_model[i]['square_sum']
+                    sum = self.pp_model[i]['sum']
+                    num = self.pp_model[i]['num']
+                    mean = sum/num
+                    var = squ_sum/num - mean**2
+                    stda = StandardScaler()
+                    stda.fit([[mean-np.sqrt(1.5*var)],[mean],[mean+np.sqrt(1.5)]])
                     res.append(stda.transform(d))
                 else:  # dis
                     d = d.int().reshape(-1, 1)
@@ -116,8 +130,13 @@ class PreProc:
             if self.post_con_features[i]:    # con
                 d = data[:, i]
                 d = d.double().reshape(-1, 1)
-                stda = MinMaxScaler()
-                stda.fit([[self.pp_model[j]['min']], [self.pp_model[j]['max']]])
+                squ_sum = self.pp_model[j]['square_sum']
+                sum = self.pp_model[j]['sum']
+                num = self.pp_model[j]['num']
+                mean = sum/num
+                var = squ_sum/num - mean**2
+                stda = StandardScaler()
+                stda.fit([[mean-np.sqrt(1.5*var)],[mean],[mean+np.sqrt(1.5)]])
                 res.append(stda.inverse_transform(d))
                 i = i + 1
                 j = j + 1
@@ -135,18 +154,31 @@ class PreProc:
         return np.concatenate(res, axis=1)
 
 '''
-# 测试代码
-# '''
-# if __name__ == '__main__':
-#     dl = DataLoader()
-#     machine_num = 0 # 0号为001，1号为002，以此类推
-#     import para
-#     raw_data = dl(para.train_data,machine_num) #加载数据
-#
-#     data = raw_data[:,1:] #移除时间列
-#     pp = PreProc(dl.t[1:])
-#     pp.fit(data)#预处理
-#
-#     inputs = pp.transform(data) #预处理输出
-#     print(inputs.shape)
-#     print(inputs[1])
+测试代码
+'''
+if __name__ == '__main__':
+    dl = DataLoader()
+    pp = None
+    if not os.path.exists("meta2.pkl"): # 预处理meta不存在
+        pp = PreProc(dl.t[1:])
+        for machine_num in range(1,34):
+            raw_data = dl(para.train_data,machine_num) #加载数据
+            data = raw_data.values[:,1:] #移除时间列
+            pp.fit(data)
+            print('机器 {0} 处理完毕。'.format(str(machine_num)),flush=True)
+        #保存预处理meta
+        output_hal = open("meta.pkl", 'wb')
+        s = pickle.dumps(pp)
+        output_hal.write(s)
+        output_hal.close()
+        print('保存预处理meta完成。',flush=True)
+    else: #加载预处理meta
+        with open("meta.pkl",'rb') as file:
+            pp = pickle.loads(file.read())
+        print('加载预处理meta完成。',flush=True)
+    # dl = DataLoader()
+    data = dl(para.train_data,1)[0:100]
+    import torch 
+    a = pp.transform(torch.tensor(data.values[:,1:].astype('f4')))
+    print(a)
+    print(pp.recover(a))

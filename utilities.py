@@ -92,7 +92,7 @@ class PreProc:
                     res.append(stda.transform(d))
                 else:  # dis
                     d = d.int().reshape(-1, 1)
-                    enc = OneHotEncoder(categories='auto')
+                    enc = OneHotEncoder(categories='auto',handle_unknown='ignore')
                     enc.fit([[c] for c in self.pp_model[i]])
                     res.append(enc.transform(d).todense())
             return torch.tensor(np.concatenate(res, axis=1))

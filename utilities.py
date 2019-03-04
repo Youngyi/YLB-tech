@@ -63,8 +63,8 @@ class PreProc:
     def transform(self,data):
         '''
         data: (69,) -->单条数据，用于dataset transforms
-        data: (N,69) -->多条数据,N为batch_size
-        data: (N,timestep,69)-->多条时序数据
+        data: (B,69) -->多条数据,B为batch_size
+        data: (B,L,69)-->多条时序数据
         '''
         # print(data.shape)
         nd = len(data.shape)
@@ -109,7 +109,7 @@ class PreProc:
                     enc = OneHotEncoder(categories='auto',handle_unknown='ignore')
                     enc.fit([[c] for c in self.pp_model[i]])
                     res.append(enc.transform(d).todense())
-            return torch.tensor(np.concatenate(res, axis=1))
+            return torch.tensor(np.concatenate(res,axis=1)).reshape(data.shape[0],data.shape[1],-1)
         else:
             raise NotImplementedError
 

@@ -39,7 +39,7 @@ class DecoderRNN(nn.Module):
         output: B x F
         '''
         output = input.view(-1, 141)
-        output = F.relu(output)
+        # output = F.relu(output)
         output = self.gru(output, hidden) # B x H
         hidden = output
         output = self.out(output)  # B x F

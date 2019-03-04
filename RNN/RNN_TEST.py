@@ -29,17 +29,18 @@ TIME_STEP = 10      # rnn time step / image height
 INPUT_SIZE = 1      # rnn input size / image width
 LR = 0.02           # learning rate
 DOWNLOAD_MNIST = False  # set to True if haven't download the data
-EPOCH = 3
+EPOCH = 10
 
 class RNN(nn.Module):
     def __init__(self, input_size, hidden_size1, hidden_size2):
         super(RNN, self).__init__()
-
-        self.rnn = nn.RNNCell(  # 这回一个普通的 RNN 就能胜任
+        self.hidden_size1 = hidden_size1
+        self.hidden_size2 = hidden_size2
+        self.rnn = nn.GRUCell(  # 这回一个普通的 RNN 就能胜任
             input_size=input_size,
             hidden_size=hidden_size1,     # rnn hidden unit
         )
-        self.rnn2 = nn.RNNCell(  # 这回一个普通的 RNN 就能胜任
+        self.rnn2 = nn.GRUCell(  # 这回一个普通的 RNN 就能胜任
             input_size=hidden_size1,
             hidden_size=hidden_size2,     # rnn hidden unit
         )
@@ -47,29 +48,45 @@ class RNN(nn.Module):
         self.total_train_times = 0
 
     def forward(self, x, h_state1, h_state2):  # 因为 hidden state 是连续的, 所以我们要一直传递这一个 state
-        # x (batch, time_step, input_size)
-        # h_state (n_layers, batch, hidden_size)
-        # r_out (batch, time_step, output_size)
-        # print(x)
-        self.total_train_times += 1
-        # print(self.total_train_times)
-        outs = []    # 保存所有时间点的预测值
-        # print(x.shape)
-        for time_step in range(90):    # 对每一个时间点计算 output
-            h_state1 = self.rnn(x[:, time_step, :], h_state1)
-            h_state2 = self.rnn2(h_state1, h_state2)
-            out = self.out(h_state2)
-            # outs.append(out)
-        for time_step in range(10):  # 对每一个时间点计算 output
-            h_state1 = self.rnn(out, h_state1)
-            h_state2 = self.rnn2(h_state1, h_state2)
-            out = self.out(h_state2)
-            outs.append(out)
-        return torch.stack(outs, dim=1), h_state1 , h_state2
+
+        output = nn.functional.relu(x)
+        output = self.rnn(output, h_state1)
+        output = nn.functional.relu(output)
+        output = self.rnn2(output, h_state2)
+        output = nn.functional.relu(output)
+        output = self.out(output)
+        return output, h_state1 , h_state2
+
+    def initHidden1(self):
+        return torch.zeros(para.batch_size, self.hidden_size1)
+
+    def initHidden2(self):
+        return torch.zeros(para.batch_size, self.hidden_size2)
+
+def train(input_tensor, target_tensor, net, optimizer, criterion):
+    hidden1 = net.initHidden1().cuda()
+    hidden2 = net.initHidden2().cuda()
+    optimizer.zero_grad()
+    input_length = input_tensor.size(0)
+    input_tensor = input_tensor.cuda()
+    target_tensor = target_tensor.cuda()
+    loss = 0.
+    output_tensor = torch.zeros(para.batch_size,141).cuda()
+    print(input_tensor[0].device)
+    for di in range(90):
+        output_tensor, hidden1, hidden2 = net(input_tensor[di], hidden1, hidden2)
+        # loss += criterion(output_tensor, target_tensor[di].float())
+    for di in range(10):
+        output_tensor, hidden1, hidden2 = net(output_tensor, hidden1, hidden2)
+        loss += criterion(output_tensor, target_tensor[di+90].float())
+    loss.backward()
+    print(loss.data)
+    optimizer.step()
+    return loss.item()
 
 
-rnn = RNN(141,500,141)
-rnn = rnn.cuda()
+rnn = RNN(141,500,500)
+rnn = rnn.cuda(0)
 print(rnn)
 
 
@@ -182,19 +199,19 @@ def main():
         print('epoch {0} start'.format(epoch),flush=True)
         pbar = tqdm(enumerate(dataset_loader), total=len(dataset_loader))
         for step, batch_x in pbar:
-            rnn.zero_grad()
-            batch_x = pp.transform(batch_x).cuda()
-            batch_x = batch_x.view(32, -1, 141).float().cuda()
-            target = batch_x[:,90:100,:].cuda()
-            prediction, h_state1, h_state2 = rnn(batch_x, h_state1, h_state2)
 
-            loss = loss_func(prediction, target)
-            loss.backward(retain_graph=True)
-            pbar.set_description("Loss {0:.4f}".format(loss.item()))
+            rnn.zero_grad()
+            batch_x = pp.transform(batch_x)
+            batch_x = batch_x.view(100, -1, 141).float()
+            print(batch_x.shape)
+            target = batch_x
+            loss = train(batch_x, target, rnn, optimizer, loss_func)
+            pbar.set_description("Loss {0:.4f}".format(loss))
             optimizer.step()
             # if loss>10:
             #     print(raw_data[step*BATCH_SIZE])
             #     break
+        torch.save(rnn, 'unsupervised_rnn{0}.pkl'.format(epoch + 1))
     plt.plot(loss_list)
     plt.show()
 

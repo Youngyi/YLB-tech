@@ -174,7 +174,7 @@ def main():
     with open("meta.pkl",'rb') as file:
         pp = pickle.loads(file.read())
     print('加载预处理meta完成。',flush=True)
-    inputs = pp.transform(data)
+    inputs = pp.transform(data).to(device)
     feature_num = inputs.shape[-1]
     # 2.1 batch化
     inputs = inputs.view(para.sequence_length,-1,feature_num).float() # L x B x F

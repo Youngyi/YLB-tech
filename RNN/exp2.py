@@ -86,7 +86,7 @@ def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, deco
     input = input[:90]
     padding = np.zeros((10,input.shape[1],input.shape[2]))
     input = np.concatenate([input,padding])
-    input_tensor = torch.tensor(input.astype('f4'))
+    input_tensor = torch.tensor(input.astype('f4')).to(device)
     #initalize encoder_hidden
     encoder_hidden = encoder.initHidden(input_tensor.size(1))
     encoder_optimizer.zero_grad()
@@ -94,6 +94,7 @@ def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, deco
 
     input_length = input_tensor.size(0)
     target_length = target_tensor.size(0)
+    target_tensor = target_tensor.to(device)
     encoder_outputs = torch.zeros(para.sequence_length, encoder.hidden_size, device=device)
 
     loss = 0.

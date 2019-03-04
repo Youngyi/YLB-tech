@@ -6,6 +6,8 @@ import sys
 sys.path.append("..")
 import para
 import numpy as np
+import sys
+sys.path.append("..")
 from tqdm import tqdm
 epoch = 8
 
@@ -53,15 +55,15 @@ def get_data(i):
     """
     get_ori_data
     """
-    data = pd.read_csv(para.train_data+str(i).zfill(3)+'/201807.csv', parse_dates=[0])
-    res = pd.read_csv(para.train_data + 'template_submit_result.csv', parse_dates=[0])[['ts', 'wtid']]
-    # print(data.shape)
+    data = pd.read_csv('/Users/yangyucheng/Desktop/SCADA/dataset/' + str(i).zfill(3) + '/201807.csv', parse_dates=[0])
+    res = pd.read_csv('/Users/yangyucheng/Desktop/SCADA/template_submit_result.csv', parse_dates=[0])[['ts', 'wtid']]
+    print(data.shape)
     res = res[res['wtid'] == i]
     # res['flag'] = 1
     data = res.merge(data, on=['wtid', 'ts'], how='outer')
     data = data.sort_values(['wtid', 'ts']).reset_index(drop=True)
 
-    # print(data.shape)
+    print(data.shape)
     return data
 
 def main():
@@ -70,8 +72,8 @@ def main():
         pp = pickle.loads(file.read())
     print('加载预处理meta完成。',flush=True)
     # 2.加载模型
-    encoder = torch.load('checkpoint0.pkl')
-    decoder = torch.load('checkpoint1.pkl')
+    encoder = torch.load('encoder10.pkl')
+    decoder = torch.load('decoder10.pkl')
     print('加载模型完成。',flush=True)
     
     # 3.加载数据
@@ -79,9 +81,8 @@ def main():
     sl = para.sequence_length 
     psl = sl//10 # half sequence length
     forecast_data = pd.DataFrame()
-    for i in range(1, 34):
+    for i in tqdm(range(1, 34)):
         data = get_data(i)
-        print('file {0} start'.format(i),flush=True)
         for i in tqdm(range(data.shape[0]//psl)):
             if 100+i*psl > data.shape[0]:
                 part_data = data[data.shape[0]-10:data.shape[0]]

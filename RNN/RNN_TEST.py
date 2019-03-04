@@ -170,7 +170,7 @@ class MyDataset(Dataset):
         return torch.tensor(data.astype('f4'))
 
     def __len__(self):
-        return sum(self.l)
+        return sum(self.l)-28
 
 
 

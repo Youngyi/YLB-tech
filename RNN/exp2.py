@@ -95,6 +95,7 @@ class MyDataset(Dataset):
         return sum(self.l)
 
 
+
 def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion, val=False):
 
     #initalize encoder_hidden
@@ -196,12 +197,12 @@ def main():
             pbar.set_description("Loss {0:.4f}".format(loss))
         val_data = torch.tensor(dataset.getValidSet().astype('f4'))
         masked_val_data,val_data = mask_and_pp(val_data,pp)
-        val_loss = train(masked_val_data, val_data, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion, val=True)
+        val_loss = train(masked_val_data.to(device), val_data.to(device), encoder, decoder, encoder_optimizer, decoder_optimizer, criterion, val=True)
         # print(val_loss)
         es(val_loss,[encoder,decoder])
         # 5.保存模型
-        # torch.save(encoder,'encoder{0}.pkl'.format(epoch+1))
-        # torch.save(decoder,'decoder{0}.pkl'.format(epoch+1))
+        torch.save(encoder,'encoder{0}.pkl'.format(epoch+1))
+        torch.save(decoder,'decoder{0}.pkl'.format(epoch+1))
 
 
 if __name__ == '__main__':

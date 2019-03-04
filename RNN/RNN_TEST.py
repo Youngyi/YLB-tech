@@ -2,10 +2,13 @@ import torch
 from torch import nn
 import numpy as np
 import matplotlib.pyplot as plt
+import sys
+sys.path.append("..")
 import torch
 import torch.nn.functional as F
 from torch.autograd import Variable
 import matplotlib.pyplot as plt
+import para
 import random
 from torch.utils.data.dataset import Dataset
 from torchvision import transforms
@@ -16,6 +19,11 @@ from tensorboardX import SummaryWriter
 import torch.nn as nn
 torch.manual_seed(1)    # reproducible
 import tqdm
+import para
+import pickle
+from tqdm import tqdm
+
+
 
 
 # Hyper Parameters
@@ -26,12 +34,12 @@ DOWNLOAD_MNIST = False  # set to True if haven't download the data
 EPOCH = 3
 
 class RNN(nn.Module):
-    def __init__(self, input_size, hiden_size1, hidden_size2):
+    def __init__(self, input_size, hidden_size1, hidden_size2):
         super(RNN, self).__init__()
 
         self.rnn = nn.RNNCell(  # 这回一个普通的 RNN 就能胜任
             input_size=input_size,
-            hidden_size=hiden_size1,     # rnn hidden unit
+            hidden_size=hidden_size1,     # rnn hidden unit
         )
         self.rnn2 = nn.RNNCell(  # 这回一个普通的 RNN 就能胜任
             input_size=hidden_size1,
@@ -49,13 +57,12 @@ class RNN(nn.Module):
         # print(self.total_train_times)
         outs = []    # 保存所有时间点的预测值
         # print(x.shape)
-        for time_step in range(7):    # 对每一个时间点计算 output
+        for time_step in range(90):    # 对每一个时间点计算 output
             h_state1 = self.rnn(x[:, time_step, :], h_state1)
             h_state2 = self.rnn2(h_state1, h_state2)
             out = self.out(h_state2)
-            print(out)
-            outs.append(out)
-        for time_step in range(3):  # 对每一个时间点计算 output
+            # outs.append(out)
+        for time_step in range(10):  # 对每一个时间点计算 output
             h_state1 = self.rnn(out, h_state1)
             h_state2 = self.rnn2(h_state1, h_state2)
             out = self.out(h_state2)
@@ -63,7 +70,7 @@ class RNN(nn.Module):
         return torch.stack(outs, dim=1), h_state1 , h_state2
 
 
-rnn = RNN()
+rnn = RNN(141,500,141)
 print(rnn)
 
 
@@ -101,65 +108,70 @@ class MyDataset(Dataset):
     def __init__(self, file_path, transforms=None):
         self.dl = DataLoader()
         self.file_path = file_path
-        self.l = [346449, 344698, 347650, 344969, 342916, 346811, 346365, 346392, 344410, 344082, 345631, 345813, 350407, 347874, 351165, 340722, 339552, 341436, 345346, 347898, 344836, 345878, 345580, 347927, 346940, 350253, 347506, 346421, 348828, 346186, 347325, 339731, 346873]
+        # 未处理不连续L序列数
+        # self.l = [3464, 3446, 3476, 3449, 3429, 3468, 3463, 3463, 3444, 3440, 3456, 3458, 3504, 3478, 3511, 3407, 3395, 3414, 3453, 3478, 3448, 3458, 3455, 3479, 3469, 3502, 3475, 3464, 3488, 3461, 3473, 3397, 3468]
+        # 处理后连续L序列数
+        self.l = [3362,3325,3357,3340,3326,3365,3364,3363,3337,3336,3353,3354,3406,3370,3403,3301,3299,3299,3342,3369,3335,3349,3347,3360,3367,3395,3363,3339,3397,3370,3366,3281,3348]
         self.current_mn = None
         self.data = None
+        self.counter = 0
         self.transforms = transforms
 
 
     def __getitem__(self, index):
-        # 寻找index对应的machine_num和index
+        if index == 0: #新epoch重置counter
+            self.counter = 0
+        # 寻找index对应的machine_num
         machine_num = 0
         for i in range(len(self.l)):
             if index>=self.l[i]:
                 index-=self.l[i]
             else:
-                machine_num = i
+                machine_num = i+1
                 break
-        # Load data
+        # 加载数据集
         if self.current_mn != machine_num:
             self.current_mn = machine_num
-            self.data = self.dl(para.train_data,machine_num)[:,1:]
+            self.counter = 0
+            self.data = self.dl(para.train_data,machine_num)
+
+        flag = True # True: 尚未得到新序列， False: 得到新序列
+        while flag:
+            d = self.data[self.counter*para.sequence_length:self.counter*para.sequence_length+para.sequence_length]
+            if not d.isna().any().any(): # 不存在缺失
+                d = d.values # to numpy
+                diff = d[1:,0] - d[:-1,0]
+                diff = np.array([di.total_seconds() for di in diff])
+                if all(diff<14): # 所有记录连续
+                    data = d[:,1:] # 去除时间列 TODO: 保留时间列用于还原
+                    flag = False # 所有记录连续
+            self.counter +=1
+
 
         if self.transforms is not None:
             data = self.transforms.transform(self.data[index])
-        else:
-            data = self.data[index]
-
+        # return shape: L x F_original (100 x  69)
         return torch.tensor(data.astype('f4'))
 
     def __len__(self):
         return sum(self.l)
 
 
+
 def main():
     #1. 预处理meta相关
     dl = DataLoader()
     pp = None
-    if not os.path.exists("meta.pkl"): # 预处理meta不存在
-        pp = PreProc(dl.t[1:])
-        for machine_num in range(33):
-            raw_data = dl(para.train_data, machine_num) #加载数据
-            data = raw_data[:,1:] #移除时间列
-            pp.fit(data)
-            print('机器 {0} 处理完毕。'.format(str(machine_num+1)),flush=True)
-        #保存预处理meta
-        output_hal = open("meta.pkl", 'wb')
-        s = pickle.dumps(pp)
-        output_hal.write(s)
-        output_hal.close()
-        print('保存预处理meta完成。',flush=True)
-    else: #加载预处理meta
-        with open("meta.pkl",'rb') as file:
-            pp = pickle.loads(file.read())
-        print('加载预处理meta完成。',flush=True)
+    with open("meta.pkl", 'rb') as file:
+        pp = pickle.loads(file.read())
+
+
 
     #2. 数据batch化
     dataset = MyDataset(para.train_data)
     dataset_loader = torch.utils.data.DataLoader(dataset=dataset,
-                                                    batch_size=BATCH_SIZE,
+                                                    batch_size=32,
                                                     shuffle=False)
-    rnn = RNN(input_size=141, hiden_size1=100, hiden_size2=100)
 
     optimizer = torch.optim.Adam(rnn.parameters(), lr=LR)
     loss_func = torch.nn.MSELoss()
@@ -169,18 +181,19 @@ def main():
     #4. 训练相关
     for epoch in range(EPOCH):
         print('epoch {0} start'.format(epoch),flush=True)
-        for step, batch_x in tqdm(enumerate(dataset_loader),total = len(dataset_loader)):
-            net2.zero_grad()
+        pbar = tqdm(enumerate(dataset_loader), total=len(dataset_loader))
+        for step, batch_x in pbar:
+            rnn.zero_grad()
             batch_x = pp.transform(batch_x)
-            prediction, h_state1, h_state2 = rnn(batch_x, h_state1, h_state2)
-            loss = loss_func(prediction, batch_x)
-            loss.backward()
-
+            target = batch_x[90:100].float()
+            prediction, h_state1, h_state2 = rnn(batch_x.view(32, -1, 141).float(), h_state1, h_state2)
+            loss = loss_func(prediction, target)
+            loss.backward(retain_graph=True)
+            pbar.set_description("Loss {0:.4f}".format(loss.item()))
             optimizer.step()
             # if loss>10:
             #     print(raw_data[step*BATCH_SIZE])
             #     break
-            loss_list.append(loss)
     plt.plot(loss_list)
     plt.show()
 

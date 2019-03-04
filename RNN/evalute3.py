@@ -6,6 +6,8 @@ import sys
 sys.path.append("..")
 import para
 import numpy as np
+import sys
+sys.path.append("..")
 from tqdm import tqdm
 epoch = 8
 

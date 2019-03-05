@@ -201,7 +201,6 @@ def main():
         print('epoch {0} start'.format(epoch),flush=True)
         pbar = tqdm(enumerate(dataset_loader), total=len(dataset_loader))
         for step, batch_x in pbar:
-            t++
             rnn.zero_grad()
             batch_x = pp.transform(batch_x)
             batch_x = batch_x.view(100, -1, 141).float()

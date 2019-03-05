@@ -1,6 +1,6 @@
-train_data = '/Users/jiayuzhai/Downloads/dataset/'
+# train_data = '/Users/jiayuzhai/Downloads/dataset/'
 # train_data = '/Users/yangyucheng/Desktop/SCADA/dataset/'
-# train_data = 'C://Users//lyyc//Desktop//dataset//'
+train_data = 'C://Users//lyyc//Desktop//dataset//'
 
 
 to_be_submit = train_data + 'template_submit_result.csv'

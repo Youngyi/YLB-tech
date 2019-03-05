@@ -9,8 +9,9 @@ import numpy as np
 import sys
 sys.path.append("..")
 from tqdm import tqdm
+from utilities import DataLoader, PreProc
 epoch = 8
-
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def check_continue(df):
     '''
     检查是否连续
@@ -55,8 +56,8 @@ def get_data(i):
     """
     get_ori_data
     """
-    data = pd.read_csv('/Users/yangyucheng/Desktop/SCADA/dataset/' + str(i).zfill(3) + '/201807.csv', parse_dates=[0])
-    res = pd.read_csv('/Users/yangyucheng/Desktop/SCADA/template_submit_result.csv', parse_dates=[0])[['ts', 'wtid']]
+    data = pd.read_csv(para.train_data + str(i).zfill(3) + '/201807.csv', parse_dates=[0])
+    res = pd.read_csv(para.train_data+'template_submit_result.csv', parse_dates=[0])[['ts', 'wtid']]
     print(data.shape)
     res = res[res['wtid'] == i]
     # res['flag'] = 1
@@ -72,13 +73,13 @@ def main():
         pp = pickle.loads(file.read())
     print('加载预处理meta完成。',flush=True)
     # 2.加载模型
-    encoder = torch.load('encoder10.pkl')
-    decoder = torch.load('decoder10.pkl')
+    encoder = torch.load('encoder8.pkl')
+    decoder = torch.load('decoder8.pkl')
     print('加载模型完成。',flush=True)
     
     # 3.加载数据
 
-    sl = para.sequence_length 
+    sl = para.sequence_length
     psl = sl//10 # half sequence length
     forecast_data = pd.DataFrame()
     for i in tqdm(range(1, 34)):
@@ -91,28 +92,28 @@ def main():
                 part_data = data[90+i*psl:100+i*psl]
                 df = data[i * psl:100 + i * psl]
             if part_data.isna().any().any():
-                print('------------origin_df-------------------------')
-                print(df.values[80:90, 1:])
+                # print('------------origin_df-------------------------')
+                # print(df.values[80:90, 1:])
                 inputs = pp.transform(torch.tensor(df.values[:, 1:].astype('f4')))
                 inputs[np.isnan(inputs)] = 0
-                processed_pred = evalute(inputs.view(para.sequence_length, -1, 141).float(), encoder, decoder)
+                processed_pred = evalute(inputs.view(para.sequence_length, -1, 141).float().to(device), encoder, decoder)
                 processed_pred = processed_pred[0]
-                raw_pred = pp.recover(processed_pred.detach())
+                raw_pred = pp.recover(processed_pred.detach().cpu())
                 raw_pred = raw_pred[90:100]
                 new_df = fill_pred(part_data,raw_pred)
                 if 100 + i * psl > data.shape[0]:
                     data[data.shape[0] - 10:data.shape[0]] = new_df
                 else:
                     data[90 + i * psl:100 + i * psl] = new_df
-                print('------------new_df-------------------------')
-                print(new_df)
+                # print('------------new_df-------------------------')
+                # print(new_df)
         forecast_data = pd.concat([forecast_data, data], axis=0)
     print('预测完成',flush=True)
-    
+
     # 5.制作submit文件
+    forecast_data.to_csv('forecast_data.csv',index=False,float_format='%.2f')
     res = pd.read_csv(para.train_data + 'template_submit_result.csv',parse_dates=[0])[['ts','wtid']]
     DF = pd.merge(res,forecast_data, on=['wtid','ts'],how = 'inner')
-    print(res.shape,data.shape,DF.shape)
     # print(DF.isna().any(axis=1))
     DF.to_csv('epoch'+str(epoch)+'.csv',index=False,float_format='%.2f')
     print('结果输出完成',flush=True)

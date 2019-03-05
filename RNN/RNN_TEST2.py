@@ -22,6 +22,7 @@ import tqdm
 import para
 import pickle
 from tqdm import tqdm
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 # Hyper Parameters
@@ -64,14 +65,14 @@ class RNN(nn.Module):
         return torch.zeros(para.batch_size, self.hidden_size2)
 
 def train(input_tensor, target_tensor, net, optimizer, criterion, counter):
-    hidden1 = net.initHidden1().cuda()
-    hidden2 = net.initHidden2().cuda()
+    hidden1 = net.initHidden1().to(device)
+    hidden2 = net.initHidden2().to(device)
     optimizer.zero_grad()
     input_length = input_tensor.size(0)
-    input_tensor = input_tensor.cuda()
-    target_tensor = target_tensor.cuda()
+    input_tensor = input_tensor.to(device)
+    target_tensor = target_tensor.to(device)
     loss = 0.
-    output_tensor = torch.zeros(para.batch_size,141).cuda()
+    output_tensor = torch.zeros(para.batch_size,141).to(device)
     print(input_tensor[0].device)
     for di in range(90):
         output_tensor, hidden1, hidden2 = net(input_tensor[di], hidden1, hidden2)
@@ -87,7 +88,7 @@ def train(input_tensor, target_tensor, net, optimizer, criterion, counter):
 
 
 rnn = RNN(141,500,500)
-rnn = rnn.cuda(0)
+rnn = rnn.to(device)
 print(rnn)
 
 

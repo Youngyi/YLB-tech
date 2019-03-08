@@ -152,7 +152,7 @@ class GRUD(nn.Module):
                 outputs = Hidden_State.unsqueeze(1)
             else:
                 outputs = torch.cat((Hidden_State.unsqueeze(1), outputs), 1)
-                
+        print(outputs.shape)
         if self.output_last:
             return outputs[:,-1,:]
         else:

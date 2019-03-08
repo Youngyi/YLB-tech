@@ -31,8 +31,47 @@ L: sequence_length
 F: feature_number
 H: hidden_size
 '''
+def super_transform(data):
+    #data --> (100,69)
+    #return : newdata--> (4,100,69) --> [data,last observe data,mask,delta]
+    mask_90 = np.ones((90, 69))
+    a = random.randint(1, 100)
+    if a > 70:
+        mask_10 = np.zeros((10, 69))
+    else:
+        b = random.randint(1, 34)  # random 0 columns from 1 to 34
+        mask_10_zeros = np.zeros((10, b))
+        mask_10_ones = np.ones((10, 69 - b))
+        mask_10 = np.concatenate([mask_10_zeros, mask_10_ones], axis=1)  # concatenate ones and zeros
+        mask_10 = np.transpose(mask_10)
+        mask_10 = np.random.permutation(mask_10)  # shuffle the ones and zeros
+        mask_10 = np.transpose(mask_10)
+    mask = np.concatenate([mask_90, mask_10], axis=0)  # concatenate contact ones and random zeros and ones
+    last_observe = np.ones_like(mask)
+    last_observe[mask == 0] = np.nan
+    last_observe = np.multiply(data, last_observe)
+    last_observe = pd.DataFrame(last_observe)
+    for i in range(0, 69):
+        last_observe[i] = last_observe[i].fillna(method='ffill')
+    last_observe = last_observe.values
+    reversed_mask = np.zeros_like(mask)
+    reversed_mask[mask == 0] = 1
+    reversed_mask[mask == 1] = 0
+    last_observe = np.multiply(reversed_mask, last_observe)
+    Delta = np.zeros_like(data)
+    for i in range(Delta.shape[0]):
+        if i == 0:
+            Delta[i] = 0
+        else:
+            Delta[i] = 1
+    for i in range(Delta.shape[0]):
+        for j in range(Delta.shape[1]):
+            if mask[i][j] == 0:
+                Delta[i][j] += Delta[i - 1][j]
 
 
+    new_data = np.array([data, last_observe, mask, Delta])
+    return new_data
 
 
 class MyDataset(Dataset):
@@ -92,48 +131,10 @@ class MyDataset(Dataset):
                         self.validset.append(d[:, 1:])
                     self.full_counter += 1
             self.file_counter += 1
-        mask_90 = np.ones((90, 69))
-        a = random.randint(1,100)
-        if a > 70:
-            mask_10 = np.zeros((10,69))
-        else :
-            b = random.randint(1,34) # random 0 columns from 1 to 34
-            mask_10_zeros = np.zeros((10,b))
-            mask_10_ones = np.ones((10,69-b))
-            mask_10 = np.concatenate([mask_10_zeros,mask_10_ones],axis=1) # concatenate ones and zeros
-            mask_10 = np.transpose(mask_10)
-            mask_10 = np.random.permutation(mask_10) # shuffle the ones and zeros
-            mask_10 = np.transpose(mask_10)
-        mask = np.concatenate([mask_90,mask_10], axis=0) # concatenate contact ones and random zeros and ones
-        last_observe = np.ones_like(mask)
-        last_observe[mask == 0] = np.nan
-        last_observe = np.multiply(data, last_observe)
-        last_observe = pd.DataFrame(last_observe)
-        for i in range(0,69):
-            last_observe[i] = last_observe[i].fillna(method = 'ffill')
-        last_observe = last_observe.values
-        reversed_mask = np.zeros_like(mask)
-        reversed_mask[mask == 0] = 1
-        reversed_mask[mask == 1] = 0
-        last_observe = np.multiply(reversed_mask,last_observe)
-        Delta = np.zeros_like(data)
-        for i in range(Delta.shape[0]):
-            if i == 0:
-                Delta[i] = 0
-            else:
-                Delta[i] = 1
-        for i in range(Delta.shape[0]):
-            for j in range(Delta.shape[1]):
-                if mask[i][j] == 0:
-                    Delta[i][j] += Delta[i-1][j]
-        print(mask)
-        print(Delta)
-        if self.transforms is not None:
-            data = self.transforms.transform(self.data[index])
-        # return shape: L x F_original (100 x  69)
-        # print(mask)
-        # print(last_observe)
-        # print(Delta)
+
+        new_data = super_transform(data)
+        print(new_data.shape)
+
         return torch.tensor(data.astype('f4'))
 
     def __len__(self):

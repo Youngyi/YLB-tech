@@ -1,4 +1,5 @@
 __pycache__
+.idea/
 .idea
 .ipynb_checkpoints
 runs
@@ -7,3 +8,4 @@ baseline*
 sub*
 testset
 *.pkl
+.DS_Store

@@ -22,12 +22,13 @@ import tqdm
 import para
 import pickle
 from tqdm import tqdm
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 # Hyper Parameters
 TIME_STEP = 10      # rnn time step / image height
 INPUT_SIZE = 1      # rnn input size / image width
-LR = 0.02           # learning rate
+LR = 0.001          # learning rate
 DOWNLOAD_MNIST = False  # set to True if haven't download the data
 EPOCH = 10
 
@@ -63,15 +64,15 @@ class RNN(nn.Module):
     def initHidden2(self):
         return torch.zeros(para.batch_size, self.hidden_size2)
 
-def train(input_tensor, target_tensor, net, optimizer, criterion):
-    hidden1 = net.initHidden1().cuda()
-    hidden2 = net.initHidden2().cuda()
+def train(input_tensor, target_tensor, net, optimizer, criterion, counter):
+    hidden1 = net.initHidden1().to(device)
+    hidden2 = net.initHidden2().to(device)
     optimizer.zero_grad()
     input_length = input_tensor.size(0)
-    input_tensor = input_tensor.cuda()
-    target_tensor = target_tensor.cuda()
+    input_tensor = input_tensor.to(device)
+    target_tensor = target_tensor.to(device)
     loss = 0.
-    output_tensor = torch.zeros(para.batch_size,141).cuda()
+    output_tensor = torch.zeros(para.batch_size,141).to(device)
     print(input_tensor[0].device)
     for di in range(90):
         output_tensor, hidden1, hidden2 = net(input_tensor[di], hidden1, hidden2)
@@ -79,6 +80,7 @@ def train(input_tensor, target_tensor, net, optimizer, criterion):
     for di in range(10):
         output_tensor, hidden1, hidden2 = net(output_tensor, hidden1, hidden2)
         loss += criterion(output_tensor, target_tensor[di+90].float())
+    # if not (loss.item() >= 10 and counter > 500):
     loss.backward()
     print(loss.data)
     optimizer.step()
@@ -86,11 +88,11 @@ def train(input_tensor, target_tensor, net, optimizer, criterion):
 
 
 rnn = RNN(141,500,500)
-rnn = rnn.cuda(0)
+rnn = rnn.to(device)
 print(rnn)
 
 
-optimizer = torch.optim.Adam(rnn.parameters(), lr=LR)   # optimize all rnn parameters
+optimizer = torch.optim.Adam(rnn.parameters(), lr=LR, weight_decay= 0.001)   # optimize all rnn parameters
 loss_func = nn.MSELoss()
 
 h_state1 = None   # 要使用初始 hidden state, 可以设成 None
@@ -127,7 +129,8 @@ class MyDataset(Dataset):
         # 未处理不连续L序列数
         # self.l = [3464, 3446, 3476, 3449, 3429, 3468, 3463, 3463, 3444, 3440, 3456, 3458, 3504, 3478, 3511, 3407, 3395, 3414, 3453, 3478, 3448, 3458, 3455, 3479, 3469, 3502, 3475, 3464, 3488, 3461, 3473, 3397, 3468]
         # 处理后连续L序列数
-        self.l = [3362,3325,3357,3340,3326,3365,3364,3363,3337,3336,3353,3354,3406,3370,3403,3301,3299,3299,3342,3369,3335,3349,3347,3360,3367,3395,3363,3339,3397,3370,3366,3281,3348]
+        # self.l = [3362,3325,3357,3340,3326,3365,3364,3363,3337,3336,3353,3354,3406,3370,3403,3301,3299,3299,3342,3369,3335,3349,3347,3360,3367,3395,3363,3339,3397,3370,3366,3281,3348]
+        self.l = [32600]
         self.current_mn = None
         self.data = None
         self.counter = 0
@@ -135,7 +138,7 @@ class MyDataset(Dataset):
 
 
     def __getitem__(self, index):
-        if index == 0: #新epoch重置counter
+        if self.counter == 32600: #新epoch重置counter
             self.counter = 0
         # 寻找index对应的machine_num
         machine_num = 0
@@ -150,10 +153,9 @@ class MyDataset(Dataset):
             self.current_mn = machine_num
             self.counter = 0
             self.data = self.dl(para.train_data,machine_num)
-
         flag = True # True: 尚未得到新序列， False: 得到新序列
         while flag:
-            d = self.data[self.counter*para.sequence_length:self.counter*para.sequence_length+para.sequence_length]
+            d = self.data[self.counter*10:self.counter*10+para.sequence_length]
             if not d.isna().any().any(): # 不存在缺失
                 d = d.values # to numpy
                 diff = d[1:,0] - d[:-1,0]
@@ -170,8 +172,8 @@ class MyDataset(Dataset):
         return torch.tensor(data.astype('f4'))
 
     def __len__(self):
-        return sum(self.l)-28
-        # return 3360
+        # return sum(self.l)-28
+        return 32600
 
 
 
@@ -187,28 +189,29 @@ def main():
     #2. 数据batch化
     dataset = MyDataset(para.train_data)
     dataset_loader = torch.utils.data.DataLoader(dataset=dataset,
-                                                    batch_size=32,
-                                                    shuffle=False)
+                                                    batch_size=para.batch_size,
+                                                    shuffle=True)
 
     optimizer = torch.optim.Adam(rnn.parameters(), lr=LR)
     loss_func = torch.nn.MSELoss()
     loss_list = []
     h_state1 = None
     h_state2 = None
+    counter = 0
     #4. 训练相关
-
     for epoch in range(EPOCH):
         print('epoch {0} start'.format(epoch),flush=True)
         pbar = tqdm(enumerate(dataset_loader), total=len(dataset_loader))
         for step, batch_x in pbar:
+            counter += 1
             rnn.zero_grad()
             batch_x = pp.transform(batch_x)
             batch_x = batch_x.view(100, -1, 141).float()
             print(batch_x.shape)
             target = batch_x
-            loss = train(batch_x, target, rnn, optimizer, loss_func)
-            pbar.set_description("Loss {0:.4f}".format(loss))
-            optimizer.step()
+            if batch_x.shape[1] == para.batch_size:
+                loss = train(batch_x, target, rnn, optimizer, loss_func, counter)
+                pbar.set_description("Loss {0:.4f}".format(loss))
             # if loss>10:
             #     print(raw_data[step*BATCH_SIZE])
             #     break

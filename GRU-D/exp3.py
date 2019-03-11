@@ -3,7 +3,7 @@ import sys
 
 sys.path.append("..")
 sys.path.append("../RNN")
-
+from GRUD import *
 from utilities import DataLoader, PreProc
 import para
 import os
@@ -44,7 +44,7 @@ def super_transform(data):
         mask_10_ones = np.ones((10, 68 - b))
         mask_10 = np.concatenate([mask_10_zeros, mask_10_ones], axis=1)  # concatenate ones and zeros
         mask_10 = np.transpose(mask_10)
-        mask_10 = np.random.permutation(mask_10)  # shuffle the ones and zeros
+        mask_10 = np.random.permutation(mask_10)# shuffle the ones and zeros
         mask_10 = np.transpose(mask_10)
     mask_without_id = np.concatenate([mask_90, mask_10], axis=0)  # concatenate contact ones and random zeros and ones
     mask = np.concatenate([np.ones((100, 1)),mask_without_id], axis=1)
@@ -64,7 +64,6 @@ def super_transform(data):
         for j in range(Delta.shape[1]):
             if mask[i][j] == 0:
                 Delta[i][j] += Delta[i - 1][j]
-
 
     new_data = np.array([data, last_observe, mask, Delta])
     return new_data
@@ -129,23 +128,22 @@ class MyDataset(Dataset):
             self.file_counter += 1
 
         new_data = super_transform(data)
-        print(new_data.shape)
 
-        return torch.tensor(data.astype('f4'))
+        return torch.tensor(new_data.astype('f4'))
 
     def __len__(self):
         return sum(self.l)
 
 
-def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion, val=False):
+def train(input_tensor, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion, val=False):
     # initalize encoder_hidden
     encoder_hidden = encoder.initHidden(input_tensor.size(1))
     encoder_optimizer.zero_grad()
     decoder_optimizer.zero_grad()
 
-    input_length = input_tensor.size(0)
-    target_length = target_tensor.size(0)
-    target_tensor = target_tensor.to(device)
+    # input_length = input_tensor.size(0)
+    # target_length = target_tensor.size(0)
+    # target_tensor = target_tensor.to(device)
     # encoder_outputs = torch.zeros(para.sequence_length, encoder.hidden_size, device=device)
 
     loss = 0.
@@ -153,58 +151,16 @@ def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, deco
     # encoder_hidden: 1 x B x H
     # encoder_output: L x B x H
     # print(input_tensor.shape)
-    encoder_output, encoder_hidden = encoder(
-        input_tensor, encoder_hidden)
-
-    decoder_input = torch.zeros_like(input_tensor[0])  # B x F
-
-    decoder_hidden = encoder_hidden.view(-1, para.hidden_size)  # B x H
-
-    use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
-
-    output = []
-    if use_teacher_forcing:
-        # Teacher forcing: Feed the target as the next input
-        for di in range(target_length):
-            # decoder_input: B x F
-            # decoder_output: B x F
-            # decoder_hidden: B x H
-            decoder_output, decoder_hidden = decoder(
-                decoder_input, decoder_hidden)
-            output.append(decoder_output.detach())
-            loss += criterion(decoder_output, target_tensor[di])
-            decoder_input = target_tensor[di]  # Teacher forcing
-
-    else:
-        # Without teacher forcing: use its own predictions as the next input
-        for di in range(target_length):
-            decoder_output, decoder_hidden = decoder(
-                decoder_input, decoder_hidden)
-            decoder_input = decoder_output.detach()  # detach from history as input
-            output.append(decoder_output.detach())
-            loss += criterion(decoder_output, target_tensor[di].float())
-    if not val:
-        loss.backward()
-
-        encoder_optimizer.step()
-        decoder_optimizer.step()
-
-    return loss.item() / target_length, torch.stack(output)
+    encoder_output= encoder(
+        input_tensor)
+    # decoder_output = decoder(encoder_output)
+    loss = criterion(input_tensor[:,1,:,:],encoder_output)
+    encoder_optimizer.step()
+    # decoder_optimizer.step()
+    print(loss.item())
+    return loss.item()
 
 
-def mask_and_pp(batch, pp):
-    # batch: B x L x F_ori
-    mask_len = para.sequence_length // 10
-    shape = batch.shape
-    mask = torch.cat([torch.ones(shape[0], int(shape[1] * 0.9), shape[2]),  # 前90条
-                      torch.cat([torch.ones(shape[0], int(shape[1] * 0.1), 1),  # 后10条，机器号
-                                 torch.ones(shape[0], int(shape[1] * 0.1), shape[2] - 1) * np.nan], 2)], 1)  # 后10条，其他字段
-    masked_batch = torch.mul(batch, mask)
-    masked_batch = pp.transform(masked_batch).float().transpose(0, 1)
-    masked_batch[torch.isnan(masked_batch)] = 0
-    batch = pp.transform(batch).float().transpose(0, 1)
-    # masked_batch,batch: L x B x F
-    return masked_batch, batch
 
 
 def main():
@@ -220,8 +176,9 @@ def main():
     print('加载预处理meta完成。', flush=True)
 
     # 3.模型
-    encoder = EncoderRNN(141, para.hidden_size).to(device)
-    decoder = DecoderRNN(141, para.hidden_size, 141).to(device)
+    x_mean = np.zeros((100,141))
+    encoder = GRUD(141, 2000, 141, x_mean, output_last = False)
+    decoder = nn.Linear(100,141).to(device)
 
     encoder_optimizer = optim.SGD(encoder.parameters(), lr=para.learning_rate)
     decoder_optimizer = optim.SGD(decoder.parameters(), lr=para.learning_rate)
@@ -229,30 +186,29 @@ def main():
     es = EarlyStopping(patience=2, verbose=True)
 
     # 4.训练
-    for epoch in range(para.num_epoch):
+    for epoch in range(30):
         print('epoch {0} start'.format(epoch), flush=True)
         pbar = tqdm(enumerate(dataset_loader), total=len(dataset_loader))
         for step, batch_x in pbar:
             encoder.zero_grad()
             decoder.zero_grad()
-
-            masked_batch_x, batch_x = mask_and_pp(batch_x, pp)
+            batch_x = pp.transform(batch_x)
             # batch_x = pp.transform(batch_x).float().transpose(0,1)
-            loss, pred = train(masked_batch_x.to(device), batch_x.to(device), encoder, decoder, encoder_optimizer,
+            loss = train(batch_x.to(device), encoder, decoder, encoder_optimizer,
                                decoder_optimizer, criterion)
             # if (step+1)%100==0:
             #     print(batch_x[-1,0],pred[-1,0],flush=True)
             # 进度条中展示loss
             pbar.set_description("Loss {0:.4f}".format(loss))
 
-        val_data = torch.tensor(dataset.getValidSet().astype('f4'))
-        masked_val_data, val_data = mask_and_pp(val_data, pp)
-        val_loss, _ = train(masked_val_data.to(device), val_data.to(device), encoder, decoder, encoder_optimizer,
-                            decoder_optimizer, criterion, val=True)
-        es(val_loss, [encoder, decoder])
-        # 5.保存模型
-        torch.save(encoder, 'encoder{0}.pkl'.format(epoch + 1))
-        torch.save(decoder, 'decoder{0}.pkl'.format(epoch + 1))
+        # val_data = torch.tensor(dataset.getValidSet().astype('f4'))
+        # masked_val_data, val_data = mask_and_pp(val_data, pp)
+        # val_loss, _ = train(masked_val_data.to(device), val_data.to(device), encoder, decoder, encoder_optimizer,
+        #                     decoder_optimizer, criterion, val=True)
+        # es(val_loss, [encoder, decoder])
+        # # 5.保存模型
+        # torch.save(encoder, 'encoder{0}.pkl'.format(epoch + 1))
+        # torch.save(decoder, 'decoder{0}.pkl'.format(epoch + 1))
 
 
 if __name__ == '__main__':

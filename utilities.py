@@ -112,7 +112,6 @@ class PreProc:
                     d = d.int().reshape(-1, 1)
                     enc = OneHotEncoder(categories='auto',handle_unknown='ignore')
                     enc.fit([[c] for c in self.pp_model[i]])
-                    print(enc.transform(d).todense().shape)
                     res.append(enc.transform(d).todense())
             return torch.tensor(np.concatenate(res,axis=1)).reshape(data.shape[0],data.shape[1],-1)
 
@@ -121,6 +120,7 @@ class PreProc:
             for i in range(len(self.con_features)):
                 # for time_step in range(data.shape[1]):
                 d = data[:, 0, :, i]
+
                 if self.con_features[i]:  # con
                     d = d.double().reshape(-1, 1)
                     squ_sum = self.pp_model[i]['square_sum']
@@ -136,7 +136,11 @@ class PreProc:
                     enc = OneHotEncoder(categories='auto', handle_unknown='ignore')
                     enc.fit([[c] for c in self.pp_model[i]])
                     res.append(enc.transform(d).todense())
-            transformed_data = np.concatenate(res, axis=1).reshape(data.shape[0], data.shape[2], -1)
+
+            # transformed_data = np.concatenate(res, axis=1)
+            # transformed_data.resize((data.shape[0], 1, data.shape[2], 141))
+            # transformed_data = torch.tensor(transformed_data)
+            transformed_data = torch.tensor(np.concatenate(res, axis=1)).reshape(data.shape[0], 1, data.shape[2], 141)
 
             res = []
             for i in range(len(self.con_features)):
@@ -157,9 +161,12 @@ class PreProc:
                     enc = OneHotEncoder(categories='auto', handle_unknown='ignore')
                     enc.fit([[c] for c in self.pp_model[i]])
                     res.append(enc.transform(d).todense())
-            transformed_last_observed = np.concatenate(res, axis=1).reshape(data.shape[0], data.shape[2], -1)
+            # transformed_last_observed = np.concatenate(res, axis=1)
+            # transformed_last_observed.resize((data.shape[0], 1, data.shape[2], 141))
+            transformed_last_observed = torch.tensor(np.concatenate(res, axis=1)).reshape(data.shape[0], 1, data.shape[2], 141)
 
             res = []
+            kv = {0:33, 16:19, 20:19, 47:3, 53:2, 66:2}
             for i in range(len(self.con_features)):
                 # for time_step in range(data.shape[1]):
                 d = data[:, 2, :, i] #mask
@@ -168,11 +175,42 @@ class PreProc:
                     res.append(stda.transform(d))
                 else:  # dis
                     d = d.int().reshape(-1, 1)
-                    enc = OneHotEncoder(categories='auto', handle_unknown='ignore')
-                    enc.fit([[c] for c in self.pp_model[i]])
-                    one_hot = enc.transform(d).todense()
-                    res.append(enc.transform(d).todense())
-            transformed_last_observed = np.concatenate(res, axis=1).reshape(data.shape[0], data.shape[2], -1)
+                    l = []
+                    for j in range(d.shape[0]):
+                        if d[i][0] == 0:
+                            l.append(np.zeros((1, kv.get(i))))
+                        else:
+                            l.append(np.ones((1, kv.get(i))))
+                    res.append(np.concatenate(l, axis=0))
+            # transformed_mask = np.concatenate(res, axis=1)
+            # transformed_mask.resize((data.shape[0], 1, data.shape[2], 141))
+            transformed_mask = torch.tensor(np.concatenate(res, axis=1)).reshape(data.shape[0], 1, data.shape[2], 141)
+
+            res = []
+            for i in range(len(self.con_features)):
+                # for time_step in range(data.shape[1]):
+                d = data[:, 2, :, i]  # delta
+                if self.con_features[i]:  # con
+                    d = d.double().reshape(-1, 1)
+                    res.append(d)
+                else:  # dis
+                    d = d.int().reshape(-1, 1)
+                    l = []
+                    for j in range(d.shape[0]):
+                        l.append(np.zeros((1, kv.get(i))) + d[j][0].numpy())
+                    res.append(np.concatenate(l, axis=0))
+            # transformed_delta = np.concatenate(res, axis=1)
+            # transformed_delta.resize((data.shape[0], 1, data.shape[2], 141))
+            # print(transformed_data.shape)
+            # print(transformed_last_observed.shape)
+            # print(transformed_mask.shape)
+            # print(transformed_delta.shape)
+            Delta = np.concatenate(res, axis=1)
+            Delta = Delta / Delta.max()
+            transformed_delta = torch.tensor(Delta).reshape(data.shape[0], 1, data.shape[2], 141)
+            output = torch.cat([transformed_data,transformed_last_observed,transformed_mask,transformed_delta],dim=1)
+
+            return output.float()
 
 
         else:

@@ -36,7 +36,7 @@ class MyDataset(Dataset):
         # 未处理不连续L序列数
         # self.l = [3464, 3446, 3476, 3449, 3429, 3468, 3463, 3463, 3444, 3440, 3456, 3458, 3504, 3478, 3511, 3407, 3395, 3414, 3453, 3478, 3448, 3458, 3455, 3479, 3469, 3502, 3475, 3464, 3488, 3461, 3473, 3397, 3468]
         # 处理后连续L序列数
-        self.total = [3362]#,3325,3357,3340,3326,3365,3364,3363,3337,3336,3353,3354,3406,3370,3403,3301,3299,3299,3342,3369,3335,3349,3347,3360,3367,3395,3363,3339,3397,3370,3366,3281,3348]
+        self.total = [3362,3325,3357,3340,3326,3365,3364,3363,3337,3336,3353,3354,3406,3370,3403,3301,3299,3299,3342,3369,3335,3349,3347,3360,3367,3395,3363,3339,3397,3370,3366,3281,3348]
         self.val_mask = [np.random.rand(t) for t in self.total] #随机数mask
         self.l = [m[m>=0.005].shape[0] for m in self.val_mask] #mask>0.5%是训练集
         self.current_mn = None
@@ -187,7 +187,7 @@ def main():
     es = EarlyStopping(patience = 2,verbose=True)
     
     # 4.训练
-    for epoch in range(para.num_epoch):
+    for epoch in range(30):
         print('epoch {0} start'.format(epoch), flush=True)
         pbar = tqdm(enumerate(dataset_loader), total=len(dataset_loader))
         for step, batch_x in pbar:

@@ -121,9 +121,9 @@ class GRUD(nn.Module):
         h = delta_h * h
         
         combined = torch.cat((x, h, mask), 1)
-        z = F.sigmoid(self.zl(combined))
-        r = F.sigmoid(self.rl(combined))
-        h_tilde = F.tanh(self.hl(combined))
+        z = torch.sigmoid(self.zl(combined))
+        r = torch.sigmoid(self.rl(combined))
+        h_tilde = torch.tanh(self.hl(combined))
         h = (1 - z) * h + z * h_tilde
         
         return h
@@ -144,7 +144,8 @@ class GRUD(nn.Module):
         for i in range(step_size):
             Hidden_State = self.step(torch.squeeze(X[:,i:i+1,:])\
                                      , torch.squeeze(X_last_obsv[:,i:i+1,:])\
-                                     , torch.squeeze(self.X_mean[:,i:i+1,:])\
+                                     # , torch.squeeze(self.X_mean[:,i:i+1,:])\
+                                     , torch.squeeze(self.X_mean[i:i + 1, :]) \
                                      , Hidden_State\
                                      , torch.squeeze(Mask[:,i:i+1,:])\
                                      , torch.squeeze(Delta[:,i:i+1,:]))

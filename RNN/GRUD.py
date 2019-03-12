@@ -1,53 +1,3 @@
-import para
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-from torch.autograd import Variable
-from torch.nn.parameter import Parameter
-import numpy as np
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-class EncoderRNN(nn.Module):
-    def __init__(self, input_size, hidden_size):
-        super(EncoderRNN, self).__init__()
-        self.hidden_size = hidden_size
-        self.gru = nn.GRU(input_size, hidden_size)
-
-    def forward(self, input, hidden):
-        '''
-        input: L x B x F
-        hidden: 1 x B x H
-        output: L x B x H
-        '''
-        output, hidden = self.gru(input,hidden)
-        return output, hidden
-
-    def initHidden(self,batch_size):
-        return torch.zeros(1,batch_size, self.hidden_size, device=device)
-
-class DecoderRNN(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, X_mean, output_last = False):
-        super(DecoderRNN, self).__init__()
-        self.hidden_size = hidden_size
-        # self.gru = nn.GRUCell(input_size, hidden_size)
-        self.gru = GRUD(input_size, hidden_size, X_mean, output_last = False)
-        self.out = nn.Linear(hidden_size, output_size)
-
-    def forward(self, input, hidden):
-        '''
-        input: B x F
-        hidden: B x H
-        output: B x F
-        '''
-        output = self.gru(input, hidden) # B x H
-        output = self.out(output)  # B x F
-        return output
-
-    def initHidden(self,batch_size):
-        return torch.zeros(batch_size, self.hidden_size, device=device)
-
 # -*- coding: utf-8 -*-
 """
 Created on Sat May 12 16:48:54 2018
@@ -55,7 +5,16 @@ Created on Sat May 12 16:48:54 2018
 @author: Zhiyong
 """
 
-
+import torch.utils.data as utils
+import torch.nn.functional as F
+import torch
+import torch.nn as nn
+from torch.autograd import Variable
+from torch.nn.parameter import Parameter
+import math
+import numpy as np
+import pandas as pd
+import time
 
 class FilterLinear(nn.Module):
     def __init__(self, in_features, out_features, filter_square_matrix, bias=True):
@@ -81,7 +40,7 @@ class FilterLinear(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        stdv = 1. / np.sqrt(self.weight.size(1))
+        stdv = 1. / math.sqrt(self.weight.size(1))
         self.weight.data.uniform_(-stdv, stdv)
         if self.bias is not None:
             self.bias.data.uniform_(-stdv, stdv)
@@ -99,7 +58,7 @@ class FilterLinear(nn.Module):
             + ', bias=' + str(self.bias is not None) + ')'
         
 class GRUD(nn.Module):
-    def __init__(self, input_size, hidden_size, X_mean, output_last = False):
+    def __init__(self, input_size, cell_size, hidden_size, X_mean, output_last = False):
         """
         Recurrent Neural Networks for Multivariate Times Series with Missing Values
         GRU-D: GRU exploit two representations of informative missingness patterns, i.e., masking and time interval.
@@ -133,13 +92,11 @@ class GRUD(nn.Module):
         use_gpu = torch.cuda.is_available()
         if use_gpu:
             self.identity = torch.eye(input_size).cuda()
-            self.zeros_x = Variable(torch.zeros(input_size).cuda())
-            self.zeros_h = Variable(torch.zeros(hidden_size).cuda())
+            self.zeros = Variable(torch.zeros(input_size).cuda())
             self.X_mean = Variable(torch.Tensor(X_mean).cuda())
         else:
             self.identity = torch.eye(input_size)
-            self.zeros_x = Variable(torch.zeros(input_size))
-            self.zeros_h = Variable(torch.zeros(hidden_size))
+            self.zeros = Variable(torch.zeros(input_size))
             self.X_mean = Variable(torch.Tensor(X_mean))
         
         self.zl = nn.Linear(input_size + hidden_size + self.mask_size, hidden_size)
@@ -148,7 +105,7 @@ class GRUD(nn.Module):
         
         self.gamma_x_l = FilterLinear(self.delta_size, self.delta_size, self.identity)
         
-        self.gamma_h_l = nn.Linear(self.delta_size, self.hidden_size)
+        self.gamma_h_l = nn.Linear(self.delta_size, self.delta_size)
         
         self.output_last = output_last
         
@@ -157,8 +114,8 @@ class GRUD(nn.Module):
         batch_size = x.shape[0]
         dim_size = x.shape[1]
         
-        delta_x = torch.exp(-torch.max(self.zeros_x, self.gamma_x_l(delta)))
-        delta_h = torch.exp(-torch.max(self.zeros_h, self.gamma_h_l(delta)))
+        delta_x = torch.exp(-torch.max(self.zeros, self.gamma_x_l(delta)))
+        delta_h = torch.exp(-torch.max(self.zeros, self.gamma_h_l(delta)))
         
         x = mask * x + (1 - mask) * (delta_x * x_last_obsv + (1 - delta_x) * x_mean)
         h = delta_h * h
@@ -171,25 +128,24 @@ class GRUD(nn.Module):
         
         return h
     
-    def forward(self, input, hidden):
+    def forward(self, input):
         batch_size = input.size(0)
         type_size = input.size(1)
         step_size = input.size(2)
         spatial_size = input.size(3)
         
-        Hidden_State = hidden#self.initHidden(batch_size)
+        Hidden_State = self.initHidden(batch_size)
         X = torch.squeeze(input[:,0,:,:])
         X_last_obsv = torch.squeeze(input[:,1,:,:])
         Mask = torch.squeeze(input[:,2,:,:])
         Delta = torch.squeeze(input[:,3,:,:])
-        X_mean = torch.zeros_like(X[0])
         
         outputs = None
         for i in range(step_size):
             Hidden_State = self.step(torch.squeeze(X[:,i:i+1,:])\
                                      , torch.squeeze(X_last_obsv[:,i:i+1,:])\
                                      # , torch.squeeze(self.X_mean[:,i:i+1,:])\
-                                     , torch.squeeze(X_mean[i:i + 1, :]) \
+                                     , torch.squeeze(self.X_mean[i:i + 1, :]) \
                                      , Hidden_State\
                                      , torch.squeeze(Mask[:,i:i+1,:])\
                                      , torch.squeeze(Delta[:,i:i+1,:]))
@@ -197,6 +153,7 @@ class GRUD(nn.Module):
                 outputs = Hidden_State.unsqueeze(1)
             else:
                 outputs = torch.cat((Hidden_State.unsqueeze(1), outputs), 1)
+        print(outputs.shape)
         if self.output_last:
             return outputs[:,-1,:]
         else:

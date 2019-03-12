@@ -78,6 +78,7 @@ class PreProc:
                 d = data[:,i]
                 if self.con_features[i]: # con
                     d = d.double().reshape(-1, 1)
+                    # d = d.astype('f4').reshape(-1,1)
                     squ_sum = self.pp_model[i]['square_sum']
                     sum = self.pp_model[i]['sum']
                     num = self.pp_model[i]['num']
@@ -88,6 +89,7 @@ class PreProc:
                     res.append(stda.transform(d))
                 else: #dis
                     d = d.int().reshape(-1, 1)
+                    # d = d.astype('i4').reshape(-1,1)
                     enc = OneHotEncoder(categories='auto',handle_unknown='ignore')
                     enc.fit([[c] for c in self.pp_model[i]])
                     res.append(enc.transform(d).todense())

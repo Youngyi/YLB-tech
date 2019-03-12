@@ -39,7 +39,7 @@ def evalute(input_tensor, encoder, decoder):
         decoder_output, decoder_hidden = decoder(
             decoder_input, decoder_hidden)
         decoder_input = decoder_output.detach()  # detach from history as input
-        output.append(decoder_output)
+        output.append(decoder_output.detach())
     return torch.stack(output, dim=1)
 
 
@@ -71,8 +71,8 @@ def main():
         pp = pickle.loads(file.read())
     print('加载预处理meta完成。',flush=True)
     # 2.加载模型
-    encoder = torch.load('checkpoint0.pkl')
-    decoder = torch.load('checkpoint1.pkl')
+    encoder = torch.load('checkpoint_encoder.pkl')
+    decoder = torch.load('checkpoint_decoder.pkl')
     print('加载模型完成。',flush=True)
     
     # 3.加载数据
@@ -84,22 +84,21 @@ def main():
         data = get_data(i)
         print('file {0} start'.format(i),flush=True)
         for i in tqdm(range(data.shape[0]//psl)):
-            if 100+i*psl > data.shape[0]:
+            if 100+i*psl > data.shape[0]: # 最后一个
                 part_data = data[data.shape[0]-10:data.shape[0]]
                 df = data[data.shape[0]-100:data.shape[0]]
-            else:
+            else: #其他
                 part_data = data[90+i*psl:100+i*psl]
                 df = data[i * psl:100 + i * psl]
-            if part_data.isna().any().any():
+            if part_data.isna().any().any(): #最后十条存在缺失，进行预测
                 # print('------------origin_df-------------------------')
-                # print(df.values[80:90, 1:])
-                inputs = pp.transform(torch.tensor(df.values[:, 1:].astype('f4')))
-                inputs[np.isnan(inputs)] = 0
-                processed_pred = evalute(inputs.view(para.sequence_length, -1, 141).float(), encoder, decoder)
-                processed_pred = processed_pred[0]
-                raw_pred = pp.recover(processed_pred.detach())
-                raw_pred = raw_pred[90:100]
-                new_df = fill_pred(part_data,raw_pred)
+                # print(df.values[90:100, 1:])
+                inputs = pp.transform(torch.tensor(df.values[:, 1:].astype('f4'))) # context预处理
+                inputs[np.isnan(inputs)] = 0 # 缺失的连续值预处理后置零
+                processed_pred = evalute(inputs.view(para.sequence_length, -1, 141).float(), encoder, decoder)[0] #预测
+                raw_pred = pp.recover(processed_pred.detach()) #恢复原始feature
+                raw_pred = raw_pred[90:100] #取最后十条
+                new_df = fill_pred(part_data,raw_pred) #空值填入预测值
                 if 100 + i * psl > data.shape[0]:
                     data[data.shape[0] - 10:data.shape[0]] = new_df
                 else:

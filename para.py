@@ -1,5 +1,5 @@
 # train_data = '/Users/jiayuzhai/Downloads/dataset/'
-train_data = '/Users/yangyucheng/Desktop/SCADA/dataset/'
+# train_data = '/Users/yangyucheng/Desktop/SCADA/dataset/'
 # train_data = 'C://Users//lyyc//Desktop//dataset//'
 
 

@@ -40,5 +40,5 @@ class EarlyStopping:
         if self.verbose:
             print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
         for i in range(len(models)):
-            torch.save(models[i], 'checkpoint{0}.pkl'.format(i))
+            torch.save(models[i], 'checkpoint{0}.pkl'.format('_encoder' if i==0 else '_decoder'))
         self.val_loss_min = val_loss

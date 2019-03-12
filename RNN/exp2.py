@@ -1,6 +1,6 @@
 import numpy as np
 import sys
-sys.path.append("..")
+# sys.path.append("..")
 from utilities import DataLoader, PreProc
 import para
 import os 
@@ -30,7 +30,7 @@ H: hidden_size
 '''
 
 class MyDataset(Dataset):
-    def __init__(self, file_path, transforms=None):
+    def __init__(self, file_path, pp, transforms=None):
         self.dl = DataLoader()
         self.file_path = file_path
         # 未处理不连续L序列数
@@ -43,6 +43,7 @@ class MyDataset(Dataset):
         self.data = None
         self.file_counter = 0
         self.full_counter = 0
+        self.pp = pp
         self.transforms = transforms
         self.validset = []
 
@@ -78,18 +79,17 @@ class MyDataset(Dataset):
                 diff = np.array([di.total_seconds() for di in diff])
                 if all(diff<14): # 所有记录连续
                     if self.val_mask[self.current_mn-1][self.full_counter]>=0.005: # mask在训练集中
-                        data = d[:,1:] # 去除时间列 TODO: 保留时间列用于还原
+                        data = d # 去除时间列 TODO: 保留时间列用于还原
                         flag = False # 所有记录连续
                     else: # mask在验证集中
                         self.validset.append(d[:,1:])
                     self.full_counter+=1
             self.file_counter +=1
 
-
-        if self.transforms is not None:
-            data = self.transforms.transform(self.data[index])
+        # if self.transforms is not None:
+        encoder_input, decoder_input = self.transforms(data,self.pp)
         # return shape: L x F_original (100 x  69)
-        return torch.tensor(data.astype('f4'))
+        return encoder_input, decoder_input
 
     def __len__(self):
         return sum(self.l)
@@ -99,57 +99,34 @@ class MyDataset(Dataset):
 def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion, val=False):
 
     #initalize encoder_hidden
+    input_tensor = input_tensor.transpose(0,1)
     encoder_hidden = encoder.initHidden(input_tensor.size(1))
     encoder_optimizer.zero_grad()
     decoder_optimizer.zero_grad()
 
-    input_length = input_tensor.size(0)
-    target_length = target_tensor.size(0)
+    target_length = target_tensor.size(2)
     target_tensor = target_tensor.to(device)
-    # encoder_outputs = torch.zeros(para.sequence_length, encoder.hidden_size, device=device)
 
     loss = 0.
     #input_tensor: L x B x F
     #encoder_hidden: 1 x B x H
     #encoder_output: L x B x H
-    # print(input_tensor.shape)
     encoder_output, encoder_hidden = encoder(
             input_tensor, encoder_hidden)
 
     decoder_input = torch.zeros_like(input_tensor[0]) # B x F
+    decoder_hidden = encoder_hidden[-1] # B x H
+    outputs = decoder(target_tensor,decoder_hidden)
 
-    decoder_hidden = encoder_hidden.view(-1,para.hidden_size) # B x H
+    loss = criterion(outputs, target_tensor[:,0,:,:])
 
-    use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
-
-    output = []
-    if use_teacher_forcing:
-        # Teacher forcing: Feed the target as the next input
-        for di in range(target_length):
-            #decoder_input: B x F
-            #decoder_output: B x F
-            #decoder_hidden: B x H
-            decoder_output, decoder_hidden = decoder(
-                decoder_input, decoder_hidden)
-            output.append(decoder_output.detach())
-            loss += criterion(decoder_output, target_tensor[di])
-            decoder_input = target_tensor[di]  # Teacher forcing
-
-    else:
-    # Without teacher forcing: use its own predictions as the next input
-        for di in range(target_length):
-            decoder_output, decoder_hidden = decoder(
-                decoder_input, decoder_hidden)
-            decoder_input = decoder_output.detach()  # detach from history as input
-            output.append(decoder_output.detach())
-            loss += criterion(decoder_output, target_tensor[di].float())
     if not val:
         loss.backward()
 
         encoder_optimizer.step()
         decoder_optimizer.step()
 
-    return loss.item() / target_length, torch.stack(output)
+    return loss.item() / target_length, outputs
 
 def mask_and_pp(batch, pp):
     # batch: B x L x F_ori
@@ -164,22 +141,113 @@ def mask_and_pp(batch, pp):
     batch = pp.transform(batch).float().transpose(0, 1)
     # masked_batch,batch: L x B x F
     return masked_batch, batch
-    
-def main():
-    # 1.加载数据
-    dataset = MyDataset(para.train_data)
-    dataset_loader = torch.utils.data.DataLoader(dataset=dataset,
-                                                 batch_size=para.batch_size,
-                                                 shuffle=False)
 
-    # 2.预处理
+def train_transform(data, pp):
+    if len(data.shape) == 3:
+        '''
+        用于dataset中transform，batch段数据
+        data: Bx100x(1+1+68)
+        return: encode_data     Bx90x141
+                decode_input    Bx4x10x141:
+                    decode_data Bx10x141
+                    mask        Bx10x141
+                    last_obs    Bx10x141
+                    delta       Bx10x141
+        '''
+        transformed = pp.transform(torch.tensor(data[:,:,1:].float()))
+        batch_size = transformed.shape[0]
+        encode_data = transformed[:,:90] # BxL_90xF
+        decode_data = transformed[:,90:] # BxL_10xF
+        decode_len = decode_data.shape[1] # L_10
+        mask_ori = torch.rand(batch_size,68) < 0.9 # mask 10%左右的字段 注: 不含机器号
+        mask = torch.ones(batch_size,10,sum(pp.transformed_features)) # BxL_10xF
+        for j in range(1,69):
+            start = sum(pp.transformed_features[:j])
+            end = sum(pp.transformed_features[:j+1])
+            # BxL_10xF(start~end)        B     -> Bx1        -> Bx1x1      -> BxL_10xF(start~end)
+            mask[:,:,start:end] = mask_ori[:,j-1].unsqueeze(-1).unsqueeze(-1).expand(-1,decode_len,pp.transformed_features[j])
+        last_obs = transformed[:,89:-1] #89~98 shape: BxL_10xF
+        for b in range(batch_size):
+            for i in range(1,10):
+                # 缺失处的last_obs向上寻找
+                last_obs[b,i,mask[b,i]==0] = last_obs[b,i-1,mask[b,i]==0]
+        
+        func = lambda x: x.total_seconds()
+        delta = (data[:,90:,0] - data[:,89:-1:,0]).reshape(-1)# B*L_10
+        for i, v in enumerate(delta):
+            delta[i] = func(v)
+        #        B*L_10                     ->   BxL_10                       ->BxL_10x1
+        delta = torch.tensor(delta.astype('f4')).reshape(batch_size,decode_len).unsqueeze(-1)
+        #BxL_10xF               BxL_10x1         Bx1xF
+        delta = torch.mul(delta,torch.ones(batch_size,sum(pp.transformed_features)).unsqueeze(1))
+        for b in range(batch_size):
+            for i in range(1,10):
+                # 缺失处的delta向上加和
+                delta[b,i,mask[b,i]==0] = delta[b,i,mask[b,i]==0] + delta[b,i-1,mask[b,i]==0]
+
+        return encode_data.float(),torch.cat([\
+                    decode_data.unsqueeze(1).float(),\
+                    last_obs.unsqueeze(1).float(),\
+                    mask.unsqueeze(1).float(),\
+                    delta.unsqueeze(1).float()],dim = 1)
+    else:
+        '''
+        用于dataset中transform，batch段数据
+        data: 100x(1+1+68)
+        return: encode_data     90x141
+                decode_input    4x10x141:
+                    decode_data 10x141
+                    mask        10x141
+                    last_obs    10x141
+                    delta       10x141
+        '''
+        transformed = pp.transform(torch.tensor(data[:,1:].astype('f4')))
+        encode_data = transformed[:90] # L_90xF
+        decode_data = transformed[90:] # L_10xF
+        decode_len = decode_data.shape[0] # L_10
+        mask_ori = torch.rand(68) < 0.9 # mask 10%左右的字段 注: 不含机器号
+        mask = torch.ones(10,sum(pp.transformed_features)) # BxL_10xF
+        for j in range(1,69):
+            start = sum(pp.transformed_features[:j])
+            end = sum(pp.transformed_features[:j+1])
+            # L_10xF(start~end)        1     -> 1x1            -> L_10xF(start~end)
+            mask[:,start:end] = mask_ori[j-1].unsqueeze(-1).expand(decode_len,pp.transformed_features[j])
+        last_obs = transformed[89:-1] #89~98 shape: L_10xF
+        for i in range(1,10):
+            # 缺失处的last_obs向上寻找
+            last_obs[i,mask[i]==0] = last_obs[i-1,mask[i]==0]
+        
+        func = lambda x: x.total_seconds() # TimeDelta -> float
+        delta = (data[90:,0] - data[89:-1:,0])# L_10
+        for i, v in enumerate(delta):
+            delta[i] = func(v)
+        #                  L_10                 ->L_10x1
+        delta = torch.tensor(delta.astype('f4')).unsqueeze(-1)
+        #L_10xF               L_10x1         1xF
+        delta = torch.mul(delta,torch.ones(sum(pp.transformed_features)).unsqueeze(0))
+        for i in range(1,10):
+            # 缺失处的delta向上加和
+            delta[i,mask[i]==0] = delta[i,mask[i]==0] + delta[i-1,mask[i]==0]
+
+        return encode_data.float(),torch.cat([decode_data.unsqueeze(0).float(), mask.unsqueeze(0).float(), last_obs.unsqueeze(0).float(),delta.unsqueeze(0).float()],dim = 0)
+
+
+
+def main():
+    # 1.加载预处理
     with open("meta.pkl",'rb') as file:
         pp = pickle.loads(file.read())
     print('加载预处理meta完成。',flush=True)
 
+    # 2.加载数据
+    dataset = MyDataset(para.train_data,pp,transforms=train_transform)
+    dataset_loader = torch.utils.data.DataLoader(dataset=dataset,
+                                                 batch_size=para.batch_size,
+                                                 shuffle=False)
+
     # 3.模型
     encoder = EncoderRNN(141,para.hidden_size).to(device)
-    decoder = DecoderRNN(141,para.hidden_size,141).to(device)
+    decoder = DecoderRNN(141,para.hidden_size,141,[0]*sum(pp.transformed_features)).to(device)
     
     encoder_optimizer = optim.SGD(encoder.parameters(), lr=para.learning_rate)
     decoder_optimizer = optim.SGD(decoder.parameters(), lr=para.learning_rate)
@@ -190,23 +258,22 @@ def main():
     for epoch in range(30):
         print('epoch {0} start'.format(epoch), flush=True)
         pbar = tqdm(enumerate(dataset_loader), total=len(dataset_loader))
-        for step, batch_x in pbar:
+        for step, batch in pbar:
             encoder.zero_grad()
             decoder.zero_grad()
-            
-            masked_batch_x, batch_x = mask_and_pp(batch_x,pp)
-            # batch_x = pp.transform(batch_x).float().transpose(0,1)
-            loss,pred = train(masked_batch_x.to(device), batch_x.to(device), encoder, decoder, encoder_optimizer, decoder_optimizer, criterion)
+            encoder_batch, decoder_input = batch[0], batch[1]
+            loss,_ = train(encoder_batch.to(device), decoder_input.to(device), encoder, decoder, encoder_optimizer, decoder_optimizer, criterion)
             # if (step+1)%100==0:
             #     print(batch_x[-1,0],pred[-1,0],flush=True)
             # 进度条中展示loss
             pbar.set_description("Loss {0:.4f}".format(loss))
 
-        val_data = torch.tensor(dataset.getValidSet().astype('f4'))
-        masked_val_data,val_data = mask_and_pp(val_data,pp)
-        val_loss,_ = train(masked_val_data.to(device), val_data.to(device), encoder, decoder, encoder_optimizer, decoder_optimizer, criterion, val=True)
-        es(val_loss,[encoder,decoder])
+        # val_data = torch.tensor(dataset.getValidSet().astype('f4'))
+        # masked_val_data,val_data = mask_and_pp(val_data,pp)
+        # val_loss,_ = train(masked_val_data.to(device), val_data.to(device), encoder, decoder, encoder_optimizer, decoder_optimizer, criterion, val=True)
+        
         # 5.保存模型
+        # es(val_loss,[encoder,decoder])
         torch.save(encoder,'encoder{0}.pkl'.format(epoch+1))
         torch.save(decoder,'decoder{0}.pkl'.format(epoch+1))
 
